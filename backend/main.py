@@ -4233,6 +4233,33 @@ def create_app(
     def api_health():
         return {"status": "ok"}
 
+    @app.route("/uploads/<path:filename>")
+    def serve_upload(filename):
+        """Отдаёт файлы из frontend/uploads (и из настроенной папки uploads)."""
+        frontend_uploads = os.path.join(
+            os.path.dirname(os.path.dirname(__file__)), "frontend", "uploads"
+        )
+        if not os.path.exists(frontend_uploads):
+            os.makedirs(frontend_uploads, exist_ok=True)
+
+        if ".." in filename.replace("\\", "/"):
+            abort(404)
+        safe_name = Path(filename).name
+        if not safe_name:
+            abort(404)
+
+        for base_dir in (str(uploads_dir), frontend_uploads):
+            file_path = os.path.join(base_dir, safe_name)
+            if os.path.isfile(file_path):
+                response = send_from_directory(base_dir, safe_name)
+                ext = Path(safe_name).suffix.lower()
+                if ext in {".jpg", ".jpeg", ".png", ".gif", ".webp", ".mp4", ".mov", ".webm"}:
+                    response.headers["Cache-Control"] = (
+                        "public, max-age=31536000, immutable"
+                    )
+                return response
+        abort(404)
+
     app.config["PUBLIC_URL"] = get_app_base_url()
     app.config["FRONTEND_ROOT"] = str(frontend_root)
     app.config["UPLOADS_DIR"] = str(uploads_dir)
@@ -4290,29 +4317,6 @@ def create_app(
     def api_public_config():
         """Публичный конфиг для Mini App (Google Maps API key из окружения)."""
         return jsonify({"ok": True, **get_public_runtime_config()})
-
-    @app.get("/uploads/<path:filename>")
-    def uploaded_file(filename: str):
-        if ".." in filename.replace("\\", "/"):
-            abort(404)
-        safe_name = Path(filename).name
-        if not safe_name:
-            abort(404)
-        target = (uploads_dir / safe_name).resolve()
-        try:
-            target.relative_to(uploads_dir)
-        except ValueError:
-            abort(404)
-        if not target.is_file():
-            abort(404)
-        response = send_from_directory(app.config["UPLOAD_FOLDER"], safe_name)
-
-        ext = Path(safe_name).suffix.lower()
-        if ext in {".jpg", ".jpeg", ".png", ".gif", ".webp", ".mp4", ".mov", ".webm"}:
-            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
-            response.headers["CDN-Cache-Control"] = "max-age=31536000"
-
-        return response
 
     @app.get("/api/products")
     @cache.cached(
