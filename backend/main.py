@@ -33,8 +33,10 @@ from PIL import Image
 
 from .config import (
     BACKEND_DIR,
+    DATABASE_PATH,
     ENV_FILE,
     PROJECT_ROOT,
+    PUBLIC_URL,
     config,
     get_app_base_url,
     get_database_path,
@@ -227,7 +229,7 @@ COURIER_ROUTE_VIEW_STATUSES = frozenset(
 )
 
 _backend_dir = BACKEND_DIR
-db_path = get_database_path()
+db_path = DATABASE_PATH
 products_catalog_path = get_products_path()
 
 
