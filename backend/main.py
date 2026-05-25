@@ -5,8 +5,13 @@
 
 from __future__ import annotations
 
-import io
+import sys
 import os
+
+# Добавляем корневую папку в путь
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import io
 
 import datetime
 import json
