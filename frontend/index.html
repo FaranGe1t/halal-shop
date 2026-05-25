@@ -1,0 +1,3384 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+
+    <script>
+      (function () {
+        var hash = location.hash || "";
+        var hashGo = hash.match(/^#\/?go\/([^&?/]+)/i);
+        if (hashGo && hashGo[1]) {
+          location.replace("/go/" + encodeURIComponent(hashGo[1]));
+          return;
+        }
+        var hashQuery = hash.indexOf("?") >= 0 ? hash.split("?")[1] : "";
+        var searchQuery = (location.search || "").replace(/^\?/, "");
+        var combined = [hashQuery, searchQuery].filter(Boolean).join("&");
+        var params = new URLSearchParams(combined);
+        if (params.get("courier_fast_go") === "1") {
+          var oid = params.get("order_id");
+          if (oid) {
+            location.replace("/go/" + encodeURIComponent(oid));
+          }
+        }
+      })();
+    </script>
+
+    <link rel="preload" as="image" href="uploads/banner.jpg" fetchpriority="high">
+
+    <script>
+        (function() {
+            const bannerPreload = new Image();
+            bannerPreload.src = "uploads/banner.jpg";
+            bannerPreload.fetchPriority = "high";
+        })();
+    </script>
+
+    <link rel="preload" href="style.css?v=8.9.0" as="style" />
+    <link
+      rel="preload"
+      href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;700&family=Oswald:wght@500;600&display=swap"
+      as="style"
+    />
+    <style>
+      body {
+        background: #11161a !important;
+        background-color: #11161a !important;
+        color: var(--tg-theme-text-color, #f5f5f5);
+        margin: 0;
+        padding: 0;
+        position: relative;
+        min-height: 100vh;
+        overflow-x: hidden;
+        font-family: "Montserrat", system-ui, sans-serif;
+      }
+    </style>
+    <title>Халяль Маркет</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script>
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", function () {
+          navigator.serviceWorker.register("/sw.js").catch(function (err) {
+            console.warn("[SW] registration failed:", err);
+          });
+        });
+      }
+    </script>
+    <!--INLINE_INITIAL_PRODUCTS-->
+    <!--RUNTIME_CONFIG-->
+    <link rel="preconnect" href="https://maps.googleapis.com" />
+    <!-- Google Maps API: ключ из GOOGLE_MAPS_API_KEY (.env) через loadGoogleMapsFromConfig() -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;700&family=Oswald:wght@500;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="style.css?v=8.9.0" media="print" onload="this.media='all'" />
+    <noscript><link rel="stylesheet" href="style.css?v=8.9.0" /></noscript>
+    <style>
+      html {
+        scroll-behavior: smooth;
+      }
+
+      html {
+        margin: 0;
+        padding: 0;
+        min-height: 100vh;
+        width: 100vw;
+        overflow-x: hidden;
+        background: #11161a !important;
+        background-color: #11161a !important;
+      }
+
+      body {
+        margin: 0;
+        padding: 0;
+        min-height: 100vh;
+        width: 100vw;
+        overflow-x: hidden;
+        position: relative;
+        background: #11161a !important;
+        background-color: #11161a !important;
+        padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px));
+      }
+
+      body::before,
+      body::after {
+        content: "" !important;
+        position: fixed !important;
+        width: 300px !important;
+        height: 300px !important;
+        border-radius: 50% !important;
+        pointer-events: none !important;
+        z-index: -1 !important;
+        filter: blur(120px) !important;
+        -webkit-filter: blur(120px) !important;
+        opacity: 0.35 !important;
+      }
+
+      body::before {
+        top: -50px !important;
+        left: -50px !important;
+        background: #10b981 !important;
+      }
+
+      body::after {
+        bottom: 10% !important;
+        right: -50px !important;
+        background: #ef4444 !important;
+      }
+
+      body,
+      div,
+      h1,
+      h2,
+      h3,
+      p,
+      span,
+      .product-name,
+      .product-price {
+        color: #ffffff !important;
+      }
+
+      .product-card .product-name {
+        color: #ffffff !important;
+      }
+
+      .product-card .product-price {
+        color: #28a745 !important;
+      }
+
+      html,
+      body,
+      #app-root,
+      .main-container,
+      main,
+      #app,
+      .app-wrapper,
+      .app {
+        background: transparent !important;
+        background-color: transparent !important;
+      }
+
+      #app-root,
+      .main-container,
+      main {
+        position: relative;
+        z-index: 1;
+        min-height: 100vh;
+      }
+
+      .app {
+        width: 100%;
+        max-width: 100%;
+        margin: 0;
+        padding: 0 0.5rem 1rem;
+        padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+      }
+
+      /* ——— Витрина: сетка каталога всегда видима при старте ——— */
+      #categories-sidebar,
+      #catalog-content {
+        display: block;
+      }
+
+      /* ——— Админ: кнопка и блок управления скрыты до init ——— */
+      #admin-panel-toggle-container {
+        display: none;
+        margin-bottom: 0.5rem;
+      }
+
+      #admin-management-block {
+        display: none;
+      }
+
+      #toggle-admin-mode-btn {
+        width: 100%;
+        padding: 0.55rem 0.75rem;
+        font-size: 0.88rem;
+        font-weight: 600;
+        border-radius: 10px;
+        cursor: pointer;
+        background: rgba(255, 255, 255, 0.07) !important;
+        border: 1px solid rgba(255, 255, 255, 0.1) !important;
+        color: #fff !important;
+        transition: all 0.2s ease !important;
+        -webkit-tap-highlight-color: transparent;
+      }
+
+      #toggle-admin-mode-btn:hover,
+      #toggle-admin-mode-btn:active {
+        background: rgba(255, 255, 255, 0.16) !important;
+      }
+
+      #toggle-admin-mode-btn.admin-mode-on {
+        background: rgba(255, 255, 255, 0.14) !important;
+        border-color: rgba(255, 255, 255, 0.18) !important;
+        color: #ffffff !important;
+      }
+
+      .shop-admin-area {
+        width: 100%;
+      }
+
+      /* ——— Админ ——— */
+      .admin-tabs-nav {
+        display: none;
+        gap: 8px;
+        overflow-x: auto;
+        padding: 10px 5px;
+        margin-bottom: 15px;
+        scrollbar-width: none;
+        border-bottom: 1px solid var(--tg-theme-hint-color, #00000012);
+        -webkit-overflow-scrolling: touch;
+      }
+
+      .admin-tabs-nav::-webkit-scrollbar {
+        display: none;
+      }
+
+      .admin-tab-btn {
+        flex: 0 0 auto;
+        padding: 8px 16px;
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.07) !important;
+        border: 1px solid rgba(255, 255, 255, 0.1) !important;
+        color: #fff !important;
+        font-size: 0.9rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s ease !important;
+        -webkit-tap-highlight-color: transparent;
+        white-space: nowrap;
+      }
+
+      .admin-tab-btn:hover,
+      .admin-tab-btn:active {
+        background: rgba(255, 255, 255, 0.16) !important;
+      }
+
+      .admin-tab-btn.active {
+        background: rgba(255, 255, 255, 0.16) !important;
+        border-color: rgba(255, 255, 255, 0.18) !important;
+        color: #ffffff !important;
+      }
+
+      .admin-tab-content {
+        padding: 0 4px 12px;
+        margin-bottom: 0.5rem;
+        opacity: 1;
+        transition: opacity 0.2s ease;
+      }
+
+      .admin-tab-content[style*="display: none"] {
+        opacity: 0;
+      }
+
+      .admin-tabs {
+        display: flex;
+        gap: 0.35rem;
+        margin-bottom: 0.85rem;
+      }
+
+      .admin-tab {
+        flex: 1;
+        padding: 0.45rem 0.35rem;
+        font-size: 0.82rem;
+        font-weight: 600;
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.07) !important;
+        border: 1px solid rgba(255, 255, 255, 0.1) !important;
+        color: #fff !important;
+        cursor: pointer;
+        transition: all 0.2s ease !important;
+        -webkit-tap-highlight-color: transparent;
+      }
+
+      .admin-tab:hover,
+      .admin-tab:active {
+        background: rgba(255, 255, 255, 0.16) !important;
+      }
+
+      .admin-tab.is-active {
+        background: rgba(255, 255, 255, 0.16) !important;
+        color: #ffffff !important;
+        border-color: rgba(255, 255, 255, 0.18) !important;
+      }
+
+      .admin-tab-panel {
+        display: none;
+      }
+
+      .admin-tab-panel.is-active {
+        display: block;
+      }
+
+      #admin-panel .admin-form-title {
+        margin: 0 0 0.65rem;
+        font-size: 0.95rem;
+        font-weight: 600;
+      }
+
+      #admin-panel .field {
+        margin-bottom: 0.6rem;
+      }
+
+      .admin-analytics-block {
+        margin-bottom: 0;
+        padding: 0;
+      }
+
+      .admin-stats-output {
+        margin: 0.55rem 0 0.85rem;
+        font-size: 0.8rem;
+        line-height: 1.35;
+      }
+
+      .admin-stats-output:empty {
+        display: none;
+      }
+
+      .admin-stats-card {
+        background: rgba(255, 255, 255, 0.03) !important;
+        backdrop-filter: blur(10px) !important;
+        -webkit-backdrop-filter: blur(10px) !important;
+        border: 1px solid rgba(255, 255, 255, 0.05) !important;
+        border-radius: 12px;
+        padding: 15px;
+      }
+
+      .admin-stats-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+        margin-bottom: 12px;
+      }
+
+      .admin-stat-item {
+        display: flex;
+        flex-direction: column;
+        gap: 0.2rem;
+        padding: 0.55rem 0.6rem;
+        border-radius: 10px;
+        background: var(--tg-theme-bg-color, #ffffff);
+        border: 1px solid var(--tg-theme-hint-color, #00000010);
+      }
+
+      .admin-stat-label {
+        font-size: 0.68rem;
+        font-weight: 500;
+        opacity: 0.72;
+        text-transform: uppercase;
+        letter-spacing: 0.02em;
+      }
+
+      .admin-stat-value {
+        font-size: 0.95rem;
+        font-weight: 700;
+        line-height: 1.15;
+        color: var(--tg-theme-text-color, #111);
+      }
+
+      .admin-stats-counts {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+        margin-bottom: 12px;
+      }
+
+      .admin-count-chip {
+        text-align: center;
+        padding: 0.45rem 0.35rem;
+        border-radius: 10px;
+        background: var(--tg-theme-bg-color, #ffffff);
+        border: 1px solid var(--tg-theme-hint-color, #00000010);
+      }
+
+      .admin-count-chip strong {
+        display: block;
+        font-size: 0.95rem;
+        font-weight: 700;
+        margin-bottom: 0.1rem;
+      }
+
+      .admin-count-chip span {
+        font-size: 0.62rem;
+        opacity: 0.75;
+        line-height: 1.1;
+      }
+
+      .admin-stats-tops-block {
+        padding-top: 0.35rem;
+        border-top: 1px solid var(--tg-theme-hint-color, #00000014);
+      }
+
+      .admin-stats-tops-title {
+        margin: 0 0 0.4rem;
+        font-size: 0.78rem;
+        font-weight: 600;
+      }
+
+      .admin-stats-tops {
+        margin: 0;
+        padding-left: 1.1rem;
+        font-size: 0.78rem;
+      }
+
+      .admin-stats-tops li {
+        margin-bottom: 0.2rem;
+      }
+
+      .admin-broadcast-block {
+        margin-top: 0.15rem;
+      }
+
+      .admin-broadcast-block .field {
+        margin-bottom: 0.55rem;
+      }
+
+      #admin-broadcast-text {
+        display: block;
+        width: 100%;
+        min-height: 5rem;
+        padding: 0.6rem 0.65rem;
+        font-size: 0.85rem;
+        line-height: 1.35;
+        border-radius: 12px;
+        border: 1px solid rgba(255, 255, 255, 0.05) !important;
+        background: rgba(0, 0, 0, 0.2) !important;
+        color: #fff !important;
+        resize: vertical;
+        box-sizing: border-box;
+        outline: none;
+        transition: border-color 0.15s ease, background 0.2s ease;
+      }
+
+      #admin-broadcast-text:focus {
+        border-color: rgba(255, 255, 255, 0.15) !important;
+      }
+
+      .btn-broadcast-send {
+        width: 100%;
+        margin-top: 0.25rem;
+        padding: 0.72rem 1rem;
+        font-size: 0.9rem;
+        font-weight: 700;
+        letter-spacing: 0.01em;
+        border-radius: 10px;
+        cursor: pointer;
+        background: rgba(255, 255, 255, 0.07) !important;
+        border: 1px solid rgba(255, 255, 255, 0.1) !important;
+        color: #fff !important;
+        -webkit-tap-highlight-color: transparent;
+        transition: all 0.2s ease !important;
+      }
+
+      .btn-broadcast-send:hover,
+      .btn-broadcast-send:active {
+        background: rgba(255, 255, 255, 0.16) !important;
+      }
+
+      .product-name-row {
+        display: flex;
+        align-items: flex-start;
+        justify-content: center;
+        gap: 2px;
+        min-width: 0;
+        width: 100%;
+        margin-bottom: 2px;
+        box-sizing: border-box;
+      }
+
+      .product-name-row .product-name {
+        flex: 1;
+        min-width: 0;
+        margin: 0;
+        text-align: center;
+      }
+
+      .btn-edit-pencil {
+        flex-shrink: 0;
+        width: 1.15rem;
+        height: 1.15rem;
+        margin-top: 0;
+        padding: 0;
+        border: none;
+        border-radius: 4px;
+        font-size: 10px;
+        line-height: 1;
+        cursor: pointer;
+        background: transparent;
+        opacity: 0.85;
+        -webkit-tap-highlight-color: transparent;
+        transition: opacity 0.15s ease, background-color 0.15s ease;
+      }
+
+      .btn-edit-pencil:active,
+      .btn-edit-pencil:hover {
+        opacity: 1;
+        background: var(--tg-theme-secondary-bg-color, #0000000d);
+      }
+
+      .btn-edit-price-pencil {
+        flex-shrink: 0;
+        margin-left: 2px;
+        padding: 0 2px;
+        border: none;
+        border-radius: 4px;
+        font-size: 10px;
+        line-height: 1;
+        cursor: pointer;
+        background: transparent;
+        opacity: 0.85;
+        vertical-align: middle;
+        -webkit-tap-highlight-color: transparent;
+      }
+
+      .btn-edit-price-pencil:hover,
+      .btn-edit-price-pencil:active {
+        opacity: 1;
+      }
+
+      #admin-panel label,
+      #admin-panel .field-label {
+        display: block;
+        margin-bottom: 0.25rem;
+        font-size: 0.74rem;
+        opacity: 0.88;
+      }
+
+      .admin-unit-type-select-hidden {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+      }
+
+      .admin-unit-type-toggle {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 0.35rem;
+      }
+
+      .admin-unit-type-btn {
+        flex: 1;
+        padding: 0.55rem 0.4rem;
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.06);
+        color: #ffffff;
+        font-size: 0.78rem;
+        font-weight: 600;
+        cursor: pointer;
+        -webkit-tap-highlight-color: transparent;
+      }
+
+      .admin-unit-type-btn.is-active {
+        background: rgba(40, 167, 69, 0.45);
+        border-color: rgba(40, 167, 69, 0.75);
+        color: #ffffff;
+      }
+
+      .admin-unit-btn.active,
+      .admin-unit-type-btn.active {
+        opacity: 1 !important;
+        border: 1px solid var(--tg-theme-button-color, #2481cc) !important;
+      }
+
+      .weight-modal-backdrop {
+        display: none;
+        flex-direction: column;
+      }
+
+      #admin-panel select,
+      #admin-panel input[type="text"],
+      #admin-panel input[type="number"],
+      #admin-panel input[type="tel"],
+      #admin-panel textarea {
+        width: 100%;
+        padding: 0.52rem 0.6rem;
+        font-size: 16px;
+        border-radius: 12px;
+        background: rgba(0, 0, 0, 0.2) !important;
+        border: 1px solid rgba(255, 255, 255, 0.05) !important;
+        color: #fff !important;
+      }
+
+      #admin-panel input[type="file"] {
+        width: 100%;
+        padding: 0.45rem 0;
+        font-size: 0.82rem;
+        cursor: pointer;
+      }
+
+      #admin-panel input[type="file"]::file-selector-button,
+      #admin-panel input[type="file"]::-webkit-file-upload-button {
+        margin-right: 0.65rem;
+        padding: 0.45rem 0.75rem;
+        font-size: 0.82rem;
+        font-weight: 600;
+        border-radius: 10px;
+        cursor: pointer;
+        background: rgba(255, 255, 255, 0.07) !important;
+        border: 1px solid rgba(255, 255, 255, 0.1) !important;
+        color: #fff !important;
+      }
+
+      #admin-panel .file-field-hint {
+        margin: 0.2rem 0 0;
+        font-size: 0.68rem;
+        opacity: 0.75;
+      }
+
+      #admin-panel .admin-submit-btn {
+        width: 100%;
+        margin-top: 0.35rem;
+        padding: 0.62rem;
+        font-size: 0.95rem;
+        border-radius: 10px;
+        cursor: pointer;
+        background: rgba(255, 255, 255, 0.07) !important;
+        border: 1px solid rgba(255, 255, 255, 0.1) !important;
+        color: #fff !important;
+        will-change: transform;
+        transition:
+          transform 0.18s ease,
+          opacity 0.18s ease,
+          background 0.2s ease !important;
+      }
+
+      #admin-panel .admin-submit-btn:hover,
+      #admin-panel .admin-submit-btn:active {
+        background: rgba(255, 255, 255, 0.16) !important;
+      }
+
+      #admin-panel .admin-submit-btn:active:not(:disabled) {
+        transform: scale(0.98);
+      }
+
+      #admin-panel .admin-submit-btn--busy,
+      #admin-panel .admin-submit-btn:disabled {
+        opacity: 0.55;
+        pointer-events: none;
+        transform: none;
+      }
+
+      .admin-couriers-section {
+        margin-top: 0.25rem;
+      }
+
+      #admin-couriers-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        margin-top: 12px;
+      }
+
+      .couriers-empty {
+        margin: 0;
+        font-size: 0.82rem;
+        opacity: 0.8;
+        text-align: center;
+        padding: 0.5rem 0;
+      }
+
+      .courier-list-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        padding: 0.55rem 0.65rem;
+        border-radius: 12px;
+        background: var(--tg-theme-secondary-bg-color, #f4f4f5);
+        border: 1px solid var(--tg-theme-hint-color, #00000014);
+      }
+
+      .courier-list-info {
+        display: flex;
+        flex-direction: column;
+        gap: 0.15rem;
+        min-width: 0;
+      }
+
+      .courier-list-info strong {
+        font-size: 0.82rem;
+        line-height: 1.2;
+      }
+
+      .courier-list-info span {
+        font-size: 0.72rem;
+        opacity: 0.75;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .courier-delete-btn {
+        flex-shrink: 0;
+        padding: 0.35rem 0.55rem;
+        font-size: 0.72rem;
+        font-weight: 600;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        background: #ffebee;
+        color: #c62828;
+      }
+
+      .admin-receipts-section {
+        margin-top: 0.25rem;
+      }
+
+      .admin-receipts-auth {
+        max-width: 320px;
+      }
+
+      .admin-receipts-error {
+        margin: 10px 0 0;
+        font-size: 0.82rem;
+        color: #ef4444;
+        min-height: 1.2em;
+      }
+
+      .admin-receipts-toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 12px;
+      }
+
+      .admin-receipts-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        max-height: 55vh;
+        overflow-y: auto;
+      }
+
+      .receipt-list-item {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 0.65rem 0.75rem;
+        border-radius: 12px;
+        background: var(--tg-theme-secondary-bg-color, #f4f4f5);
+        border: 1px solid var(--tg-theme-hint-color, #00000014);
+      }
+
+      .receipt-list-info {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 0.2rem;
+        font-size: 0.78rem;
+      }
+
+      .receipt-list-info strong {
+        font-size: 0.85rem;
+      }
+
+      .receipt-list-info .receipt-meta {
+        opacity: 0.75;
+        line-height: 1.35;
+      }
+
+      .receipt-delete-btn {
+        flex-shrink: 0;
+        padding: 0.4rem 0.6rem;
+        font-size: 0.72rem;
+        font-weight: 600;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        background: #ffebee;
+        color: #c62828;
+      }
+
+      .admin-order-card {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 10px;
+      }
+
+      .admin-order-card-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 10px;
+      }
+
+      .admin-order-items {
+        margin: 6px 0 0;
+        padding: 0;
+        list-style: none;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .admin-order-item-line {
+        font-size: 0.76rem;
+        line-height: 1.35;
+        opacity: 0.9;
+      }
+
+      .weight-edit-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px 8px;
+        padding: 8px 10px;
+        border-radius: 10px;
+        background: rgba(255, 193, 7, 0.12);
+        border: 1px solid rgba(255, 193, 7, 0.35);
+        font-size: 0.76rem;
+        line-height: 1.35;
+      }
+
+      .weight-edit-row > span {
+        flex: 1 1 100%;
+      }
+
+      .admin-weight-input {
+        width: 5.5rem;
+        padding: 6px 8px;
+        font-size: 0.85rem;
+        border-radius: 8px;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        background: rgba(0, 0, 0, 0.25);
+        color: inherit;
+      }
+
+      .btn-approve-weight {
+        width: 100%;
+        margin-top: 4px;
+        padding: 10px 12px;
+        font-size: 0.82rem;
+        font-weight: 700;
+        border: none;
+        border-radius: 10px;
+        cursor: pointer;
+        color: #1a1a1a;
+        background: linear-gradient(135deg, #ffc107 0%, #ff9800 100%);
+        box-shadow: 0 2px 10px rgba(255, 152, 0, 0.35);
+      }
+
+      .receipt-status-pending-weight {
+        color: #ff9800;
+        font-weight: 600;
+      }
+
+      .receipts-empty {
+        margin: 0;
+        font-size: 0.82rem;
+        opacity: 0.8;
+        text-align: center;
+        padding: 0.5rem 0;
+      }
+
+      #admin-receipts-password-modal.admin-modal-backdrop {
+        display: none;
+        position: fixed;
+        inset: 0;
+        z-index: 100000;
+        align-items: center;
+        justify-content: center;
+        padding: 16px;
+        background: rgba(0, 0, 0, 0.65);
+        box-sizing: border-box;
+      }
+
+      #admin-receipts-password-modal.is-open {
+        display: flex;
+      }
+
+      .admin-receipts-password-dialog {
+        width: 100%;
+        max-width: 340px;
+        padding: 22px 20px;
+        border-radius: 16px;
+        background: #1c222b;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+      }
+
+      .admin-receipts-password-dialog h3 {
+        margin: 0 0 8px;
+        font-size: 1.05rem;
+        color: #fff;
+        text-align: center;
+      }
+
+      .admin-receipts-password-dialog p {
+        margin: 0 0 16px;
+        font-size: 0.85rem;
+        color: rgba(255, 255, 255, 0.65);
+        text-align: center;
+        line-height: 1.4;
+      }
+
+      .admin-receipts-password-dialog input {
+        width: 100%;
+        padding: 12px;
+        margin-bottom: 14px;
+        border-radius: 10px;
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        background: rgba(0, 0, 0, 0.25);
+        color: #fff;
+        font-size: 16px;
+        box-sizing: border-box;
+      }
+
+      .admin-receipts-password-actions {
+        display: flex;
+        gap: 10px;
+      }
+
+      .admin-receipts-password-actions button {
+        flex: 1;
+        padding: 11px;
+        border: none;
+        border-radius: 10px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+
+      .admin-receipts-password-cancel {
+        background: rgba(255, 255, 255, 0.1);
+        color: #fff;
+      }
+
+      .admin-receipts-password-submit {
+        background: #10b981;
+        color: #fff;
+      }
+
+      .main-layout {
+        display: grid;
+        grid-template-columns: 92px minmax(0, 1fr);
+        gap: 0.5rem;
+        align-items: start;
+        width: 100%;
+      }
+
+      #categories-sidebar,
+      .sidebar-categories {
+        position: sticky;
+        top: 0.35rem;
+        z-index: 2;
+        width: 100%;
+        min-width: 0;
+        padding: 0.35rem 0.25rem;
+        border-radius: 16px;
+        background: transparent !important;
+        background-color: transparent !important;
+        border: none !important;
+        border-right: none !important;
+        box-shadow: none !important;
+      }
+
+      .sidebar-nav,
+      .categories-container {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.5rem;
+        width: 100%;
+        min-width: 0;
+      }
+
+      .category-nav-item {
+        position: relative;
+        width: 100%;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .category-delete-btn {
+        display: none;
+        position: absolute;
+        top: -2px;
+        right: -2px;
+        z-index: 3;
+        width: 1.35rem;
+        height: 1.35rem;
+        padding: 0;
+        font-size: 0.65rem;
+        line-height: 1;
+        cursor: pointer;
+        border: none;
+        border-radius: 50%;
+        background-color: #c62828;
+        color: #ffffff;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+        align-items: center;
+        justify-content: center;
+      }
+
+      .category-delete-btn.admin-visible {
+        display: flex;
+      }
+
+      .category-nav-btn,
+      .category-card {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 0.25rem;
+        width: 100%;
+        min-width: 0;
+        min-height: 50px;
+        padding: 4px 6px !important;
+        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.05) !important;
+        background-color: rgba(255, 255, 255, 0.05) !important;
+        border: 1px solid rgba(255, 255, 255, 0.08) !important;
+        backdrop-filter: blur(12px) !important;
+        -webkit-backdrop-filter: blur(12px) !important;
+        box-sizing: border-box;
+        cursor: pointer;
+        color: #ffffff !important;
+        -webkit-tap-highlight-color: transparent;
+      }
+
+      .category-nav-btn.is-active {
+        background: rgba(255, 255, 255, 0.18) !important;
+        background-color: rgba(255, 255, 255, 0.18) !important;
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.22);
+      }
+
+      .category-nav-icon {
+        width: 2.5rem;
+        aspect-ratio: 1 / 1;
+        flex-shrink: 0;
+        border-radius: 50%;
+        overflow: visible;
+        border: none;
+        box-shadow: none;
+        background: transparent !important;
+        background-color: transparent !important;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+      }
+
+      .category-nav-icon img,
+      .category-img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        display: block;
+        background: transparent !important;
+        background-color: transparent !important;
+        filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.2)) !important;
+      }
+
+      .category-nav-label,
+      .category-name,
+      .category-title {
+        font-family: "Montserrat", sans-serif !important;
+        font-weight: 500 !important;
+        font-size: 11px !important;
+        letter-spacing: -0.3px !important;
+        word-break: break-word !important;
+        hyphens: auto !important;
+        -webkit-hyphens: auto !important;
+        line-height: 1.15 !important;
+        text-align: center !important;
+        max-width: 100%;
+        min-width: 0;
+        display: block;
+        box-sizing: border-box;
+      }
+
+      .catalog-section-title {
+        font-family: "Montserrat", sans-serif !important;
+        font-weight: 500 !important;
+      }
+
+      .catalog-content {
+        min-width: 0;
+        width: 100%;
+        box-sizing: border-box;
+      }
+
+      #catalog-container,
+      #products-grid,
+      .product-grid,
+      .products-grid {
+        display: grid !important;
+        grid-template-columns: repeat(auto-fit, minmax(80px, 1fr)) !important;
+        gap: 8px !important;
+        padding: 8px !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+        align-items: stretch;
+      }
+
+      #products-grid {
+        display: block;
+        padding: 0 !important;
+      }
+
+      #catalog-container {
+        display: block !important;
+      }
+
+      #catalog-container .product-grid,
+      #catalog-container .products-grid {
+        display: grid !important;
+        grid-template-columns: repeat(auto-fit, minmax(80px, 1fr)) !important;
+        gap: 8px !important;
+        padding: 8px !important;
+      }
+
+      .product-grid.admin-mode-active,
+      .products-grid.admin-mode-active {
+        grid-template-columns: repeat(auto-fit, minmax(80px, 1fr)) !important;
+        gap: 8px !important;
+        padding: 8px !important;
+      }
+
+      .shop-title {
+        margin: 0 0 0.55rem;
+        font-size: 1.15rem;
+        font-weight: 700;
+        padding: 0 6px;
+        box-sizing: border-box;
+      }
+
+      .catalog-section {
+        scroll-margin-top: 0.65rem;
+        margin-bottom: 1.15rem;
+      }
+
+      .catalog-section-title {
+        margin: 0 0 0.5rem;
+        font-size: 0.92rem;
+      }
+
+      .catalog-empty,
+      .catalog-error {
+        text-align: center;
+        opacity: 0.85;
+        font-size: 0.88rem;
+        padding: 1rem 0.35rem;
+      }
+
+      .product-card {
+        position: relative;
+        will-change: transform;
+        transform: translateZ(0);
+        backface-visibility: hidden;
+        display: flex !important;
+        flex-direction: column !important;
+        justify-content: space-between !important;
+        align-items: stretch;
+        width: auto !important;
+        height: auto !important;
+        min-height: 140px !important;
+        min-width: 0;
+        max-width: 100%;
+        padding: 6px !important;
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.05) !important;
+        background-color: rgba(255, 255, 255, 0.05) !important;
+        border: 1px solid rgba(255, 255, 255, 0.08) !important;
+        backdrop-filter: blur(12px) !important;
+        -webkit-backdrop-filter: blur(12px) !important;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+        overflow: visible;
+        box-sizing: border-box !important;
+        text-align: center;
+      }
+
+      .product-img-wrapper {
+        width: 100%;
+        aspect-ratio: 1 / 1;
+        background: transparent !important;
+        background-color: transparent !important;
+        border-radius: 8px;
+        margin-bottom: 4px;
+        overflow: visible;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+        flex-shrink: 0;
+      }
+
+      .product-img-wrapper--empty {
+        opacity: 0.55;
+      }
+
+      .product-img-wrapper img {
+        display: block;
+      }
+
+      .product-card .product-img,
+      .product-img {
+        width: 100% !important;
+        height: auto !important;
+        max-height: 100%;
+        aspect-ratio: 1 / 1 !important;
+        object-fit: contain !important;
+        display: block !important;
+        background: transparent !important;
+        background-color: transparent !important;
+        filter: drop-shadow(0 6px 8px rgba(0, 0, 0, 0.25)) !important;
+        transition: transform 0.2s ease !important;
+        will-change: transform;
+        transform: translateZ(0);
+        backface-visibility: hidden;
+      }
+
+      .product-card:active .product-img {
+        transform: scale(1.03) translateZ(0);
+      }
+
+      .category-img {
+        background: transparent !important;
+        background-color: transparent !important;
+      }
+
+      @keyframes storefront-fade-in {
+        from {
+          opacity: 0;
+        }
+        to {
+          opacity: 1;
+        }
+      }
+
+      .banner-container {
+        animation: storefront-fade-in 0.4s ease-out both;
+      }
+
+      .banner-img {
+        opacity: 0;
+        transition: opacity 0.35s ease-out;
+        will-change: transform, opacity;
+        transform: translateZ(0);
+        backface-visibility: hidden;
+      }
+
+      .banner-img.is-visible {
+        opacity: 1;
+      }
+
+      .catalog-content,
+      .main-layout {
+        animation: storefront-fade-in 0.45s ease-out 0.05s both;
+      }
+
+      #catalog-container .product-card {
+        animation: storefront-fade-in 0.35s ease-out both;
+      }
+
+      #catalog-container .product-img {
+        opacity: 1;
+        animation: storefront-fade-in 0.4s ease-out 0.08s both;
+      }
+
+      #catalog-container .product-img.is-visible {
+        opacity: 1;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .banner-container,
+        .catalog-content,
+        .main-layout,
+        #catalog-container .product-card,
+        #catalog-container .product-img {
+          animation: none;
+        }
+
+        .banner-img {
+          opacity: 1;
+          transition: none;
+        }
+
+        #catalog-container .product-img {
+          opacity: 1;
+        }
+      }
+
+      .product-name {
+        font-family: "Montserrat", sans-serif !important;
+        font-weight: 500 !important;
+        display: block !important;
+        font-size: 11px !important;
+        line-height: 1.2 !important;
+        margin: 4px 0 !important;
+        max-height: calc(1.2em * 2);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        word-break: break-word;
+        hyphens: auto;
+      }
+
+      .product-flavor {
+        margin: 0 0 4px;
+        font-size: 0.58rem;
+        line-height: 1.1;
+        opacity: 0.78;
+        flex: 1;
+        min-height: 0;
+        display: -webkit-box;
+        -webkit-line-clamp: 1;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
+
+      .product-card-name,
+      .product-card-price,
+      .product-card-client-actions,
+      .product-card-admin-actions {
+        width: 100%;
+        min-width: 0;
+        box-sizing: border-box;
+      }
+
+      .product-card-footer {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 3px;
+        margin-top: auto;
+        flex-shrink: 0;
+        width: 100%;
+        min-width: 0;
+        box-sizing: border-box;
+      }
+
+      .product-price,
+      .price-value,
+      .old-price,
+      .product-price--sale {
+        font-family: "Oswald", sans-serif !important;
+        font-weight: 600 !important;
+        letter-spacing: 0.5px !important;
+      }
+
+      .product-price {
+        display: block !important;
+        margin: 0;
+        font-size: 11px !important;
+        font-weight: bold !important;
+        line-height: 1.2;
+        white-space: nowrap;
+        text-align: center;
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .product-price-unit,
+      .unit-text,
+      .product-unit {
+        font-family: sans-serif !important;
+        font-size: 9px !important;
+        font-weight: 400 !important;
+        letter-spacing: 0 !important;
+        color: #888 !important;
+        opacity: 0.65 !important;
+        white-space: nowrap;
+      }
+
+      .old-price .product-price-unit,
+      .product-price--sale .product-price-unit {
+        font-size: 8px !important;
+      }
+
+      .product-card .product-count-value,
+      .product-card .order-qty-value {
+        font-family: sans-serif !important;
+        font-size: 9px !important;
+        font-weight: 500 !important;
+        letter-spacing: 0 !important;
+        color: #888 !important;
+        opacity: 0.65 !important;
+      }
+
+      .product-card-footer--price {
+        align-items: center;
+        width: 100%;
+      }
+
+      .product-card-footer--price .btn-add-plus {
+        margin-top: 2px;
+        align-self: center;
+      }
+
+      .product-card-client-actions,
+      .product-card-actions {
+        display: flex !important;
+        justify-content: center;
+        align-items: center;
+        width: 100% !important;
+        margin-top: 2px;
+        min-height: 22px;
+        flex-shrink: 0;
+        visibility: visible !important;
+        opacity: 1 !important;
+      }
+
+      .product-cart-qty {
+        display: flex !important;
+        align-items: center;
+        justify-content: center;
+        gap: 2px;
+        width: 100% !important;
+        max-width: 100%;
+        visibility: visible !important;
+      }
+
+      .product-card .btn-add-plus,
+      .product-card .order-qty-btn,
+      .product-card .add-to-cart-btn,
+      .order-item-row .order-qty-btn,
+      .order-item-remove {
+        visibility: visible !important;
+        flex-shrink: 0;
+        will-change: transform;
+        transition:
+          transform 0.15s ease,
+          opacity 0.15s ease,
+          background 0.15s ease;
+      }
+
+      .product-card .btn-add-plus:active:not(:disabled),
+      .product-card .order-qty-btn:active:not(:disabled),
+      .order-item-row .order-qty-btn:active:not(:disabled) {
+        transform: scale(0.92);
+      }
+
+      .product-card .order-qty-btn {
+        width: 20px;
+        height: 20px;
+        min-width: 20px;
+        padding: 0;
+        font-size: 11px;
+        border-radius: 4px;
+        flex-shrink: 0;
+      }
+
+      .product-card .order-qty-value,
+      .product-card .product-count-value {
+        min-width: 1.5rem;
+        max-width: 2.5rem;
+        line-height: 1.2;
+        text-align: center;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .product-card-actions .btn-add-plus[hidden],
+      .product-cart-qty[hidden] {
+        display: none !important;
+      }
+
+      .product-price-wrap {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: center;
+        gap: 2px;
+        min-width: 0;
+        width: 100%;
+        line-height: 1.2;
+      }
+
+      .product-price-old {
+        font-size: 9px;
+        text-decoration: line-through;
+        opacity: 0.55;
+      }
+
+      .product-discount-badge {
+        font-size: 0.58rem;
+        font-weight: 700;
+        color: #c62828;
+      }
+
+      .old-price {
+        text-decoration: line-through;
+        color: #888;
+        font-size: 9px;
+        margin-right: 2px;
+      }
+
+      .discount-badge {
+        background: #dc3545;
+        color: white;
+        padding: 1px 4px;
+        border-radius: 3px;
+        font-size: 9px;
+        position: absolute;
+        top: 5px;
+        left: 5px;
+        font-weight: bold;
+        z-index: 1;
+      }
+
+      .product-price--sale {
+        font-size: 11px;
+        line-height: 1.2;
+        color: #28a745 !important;
+      }
+
+      .btn-product-discount {
+        width: 100%;
+        margin-top: 0.35rem;
+        padding: 0.35rem 0.4rem;
+        border: none;
+        border-radius: 8px;
+        font-size: 0.68rem;
+        font-weight: 600;
+        cursor: pointer;
+        background: var(--tg-theme-secondary-bg-color, #f1f1f1);
+        color: var(--tg-theme-text-color, #222);
+        -webkit-tap-highlight-color: transparent;
+      }
+
+      .admin-promocodes-list {
+        margin-top: 0.75rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.45rem;
+      }
+
+      .admin-promocode-row {
+        display: flex;
+        align-items: center;
+        gap: 0.45rem;
+        padding: 0.5rem 0.6rem;
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.03) !important;
+        backdrop-filter: blur(10px) !important;
+        -webkit-backdrop-filter: blur(10px) !important;
+        border: 1px solid rgba(255, 255, 255, 0.05) !important;
+      }
+
+      .admin-promocode-code {
+        font-weight: 700;
+        flex: 1;
+      }
+
+      .admin-promocode-pct {
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: #2e7d32;
+      }
+
+      .btn-delete-promocode {
+        padding: 0.35rem 0.55rem;
+        border-radius: 10px;
+        font-size: 0.72rem;
+        cursor: pointer;
+        background: rgba(255, 255, 255, 0.07) !important;
+        border: 1px solid rgba(255, 255, 255, 0.1) !important;
+        color: #fff !important;
+        transition: all 0.2s ease !important;
+      }
+
+      .btn-delete-promocode:hover,
+      .btn-delete-promocode:active {
+        background: rgba(255, 255, 255, 0.16) !important;
+      }
+
+      .promocode-row {
+        display: flex;
+        gap: 0.4rem;
+        align-items: stretch;
+      }
+
+      .promocode-row input {
+        flex: 1;
+        min-width: 0;
+      }
+
+      .promocode-apply-btn {
+        flex-shrink: 0;
+        padding: 0.52rem 0.75rem;
+        border-radius: 10px;
+        font-size: 0.82rem;
+        font-weight: 600;
+        cursor: pointer;
+        background: rgba(255, 255, 255, 0.07) !important;
+        border: 1px solid rgba(255, 255, 255, 0.1) !important;
+        color: #fff !important;
+        transition: all 0.2s ease !important;
+      }
+
+      .promocode-apply-btn:hover,
+      .promocode-apply-btn:active {
+        background: rgba(255, 255, 255, 0.16) !important;
+      }
+
+      .promocode-status {
+        margin: 0.35rem 0 0;
+        font-size: 0.75rem;
+      }
+
+      .promocode-status--ok {
+        color: #2e7d32;
+      }
+
+      .promocode-status--err {
+        color: #c62828;
+      }
+
+      .btn-add-plus {
+        width: 22px;
+        height: 22px;
+        min-width: 22px;
+        min-height: 22px;
+        padding: 0;
+        border: none;
+        border-radius: 50%;
+        font-size: 11px;
+        font-weight: bold;
+        line-height: 1;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        background-color: #28a745;
+        color: #fff;
+        box-shadow: 0 2px 6px rgba(40, 167, 69, 0.35);
+        -webkit-tap-highlight-color: transparent;
+        transition: transform 0.12s ease, background-color 0.15s ease, box-shadow 0.12s ease;
+      }
+
+      .btn-add-plus:active {
+        transform: scale(0.9);
+        box-shadow: 0 1px 3px rgba(40, 167, 69, 0.4);
+      }
+
+      .btn-add-plus.btn-add-plus--done {
+        background-color: #218838;
+      }
+
+      .add-to-cart-btn,
+      .product-add-btn {
+        width: 1.95rem;
+        height: 1.95rem;
+        padding: 0;
+        border: none;
+        border-radius: 12px;
+        font-size: 1.2rem;
+        cursor: pointer;
+        background-color: var(--tg-theme-button-color, #3390ec);
+        color: var(--tg-theme-button-text-color, #ffffff);
+      }
+
+      .product-delete-btn {
+        display: none;
+        position: absolute;
+        top: 0.35rem;
+        right: 0.35rem;
+        width: 1.85rem;
+        height: 1.85rem;
+        padding: 0;
+        font-size: 0.75rem;
+        cursor: pointer;
+        border: none;
+        border-radius: 50%;
+        background-color: #c62828;
+        color: #ffffff;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+        align-items: center;
+        justify-content: center;
+      }
+
+      .product-delete-btn.admin-visible {
+        display: flex;
+      }
+
+      .product-card.out-of-stock {
+        position: relative;
+        opacity: 0.6;
+      }
+
+      .product-card.out-of-stock .product-img-wrapper img {
+        filter: grayscale(0.35);
+      }
+
+      .product-stock-badge {
+        position: absolute;
+        top: 0.35rem;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 2;
+        padding: 2px 4px;
+        font-size: 9px;
+        font-weight: 700;
+        letter-spacing: 0.03em;
+        text-transform: uppercase;
+        color: #fff;
+        background: linear-gradient(135deg, #c62828 0%, #b71c1c 100%);
+        border-radius: 999px;
+        box-shadow: 0 2px 10px rgba(183, 28, 28, 0.35);
+        pointer-events: none;
+        white-space: nowrap;
+      }
+
+      .admin-card-controls {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+        margin-top: 4px;
+        width: 100%;
+        min-width: 0;
+        flex-shrink: 0;
+        box-sizing: border-box;
+      }
+
+      .admin-card-controls button {
+        width: 100%;
+        max-width: 100%;
+        padding: 4px 2px;
+        font-size: 10px;
+        font-weight: 600;
+        border-radius: 5px;
+        border: none;
+        cursor: pointer;
+        line-height: 1.2;
+        white-space: normal;
+        word-break: break-word;
+        text-align: center;
+        box-sizing: border-box;
+        transition: opacity 0.15s ease, transform 0.1s ease;
+      }
+
+      .admin-card-controls button:active {
+        transform: scale(0.98);
+        opacity: 0.92;
+      }
+
+      .btn-admin-stock {
+        background: #ffc107;
+        color: #000;
+      }
+
+      .admin-stock-qty-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-end;
+        gap: 8px;
+        width: 100%;
+      }
+
+      .admin-stock-qty-label {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        font-size: 11px;
+        color: rgba(255, 255, 255, 0.85);
+        flex: 1;
+        min-width: 120px;
+      }
+
+      .admin-stock-qty-input {
+        width: 100%;
+        max-width: 120px;
+        padding: 6px 8px;
+        border-radius: 8px;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        background: rgba(0, 0, 0, 0.25);
+        color: #fff;
+        font-size: 14px;
+        box-sizing: border-box;
+      }
+
+      .btn-admin-stock-save {
+        background: #28a745;
+        color: #fff;
+        border: none;
+        border-radius: 8px;
+        padding: 8px 12px;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+
+      .btn-admin-discount {
+        background: #17a2b8;
+        color: #fff;
+      }
+
+      .btn-admin-price {
+        background: #5c6bc0;
+        color: #fff;
+      }
+
+      .btn-admin-delete {
+        background: #dc3545;
+        color: #fff;
+      }
+
+      .add-to-cart-btn--disabled {
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
+        height: auto;
+        padding: 4px 2px;
+        font-size: 10px;
+        line-height: 1.2;
+        cursor: not-allowed;
+        opacity: 0.75;
+        background: var(--tg-theme-hint-color, #999);
+        box-sizing: border-box;
+        white-space: normal;
+        word-break: break-word;
+        text-align: center;
+      }
+
+      #admin-management-block,
+      #admin-panel,
+      .shop-admin-area,
+      #admin-panel-toggle-container,
+      .admin-tab-content {
+        background: rgba(255, 255, 255, 0.03) !important;
+        backdrop-filter: blur(10px) !important;
+        -webkit-backdrop-filter: blur(10px) !important;
+        border: 1px solid rgba(255, 255, 255, 0.05) !important;
+        color: #ffffff !important;
+        border-radius: 14px;
+      }
+
+      #admin-management-block,
+      #admin-panel {
+        padding: 0.5rem;
+      }
+
+      #admin-panel-toggle-container {
+        display: none;
+        padding: 0.35rem;
+        margin-bottom: 0.5rem;
+        box-shadow: none !important;
+      }
+
+      .admin-tabs-nav {
+        border-bottom-color: rgba(255, 255, 255, 0.1) !important;
+        background: transparent !important;
+        border: none !important;
+        backdrop-filter: none !important;
+      }
+
+      #admin-panel label,
+      #admin-panel .admin-form-title,
+      .admin-tab-content h3 {
+        color: #ffffff !important;
+      }
+
+      #admin-panel button:not(.admin-unit-type-btn) {
+        background: rgba(255, 255, 255, 0.07) !important;
+        border: 1px solid rgba(255, 255, 255, 0.1) !important;
+        color: #fff !important;
+      }
+
+      #admin-panel button:not(.admin-unit-type-btn):hover,
+      #admin-panel button:not(.admin-unit-type-btn):active {
+        background: rgba(255, 255, 255, 0.16) !important;
+      }
+
+      /* Корзина (нижняя панель) */
+      .cart-checkout-panel {
+        display: none;
+        position: fixed;
+        z-index: 40;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        flex-direction: column;
+        gap: 8px;
+        background: rgba(40, 45, 50, 0.4) !important;
+        backdrop-filter: blur(15px) !important;
+        -webkit-backdrop-filter: blur(15px) !important;
+        border-top: 1px solid rgba(255, 255, 255, 0.08) !important;
+        border-left: none !important;
+        border-right: none !important;
+        border-bottom: none !important;
+        box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.2) !important;
+        border-radius: 14px 14px 0 0;
+        padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px));
+        color: #ffffff !important;
+      }
+
+      .cart-checkout-panel.cart-checkout-panel--visible {
+        display: flex;
+      }
+
+      .cart-checkout-panel .promo-container {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        margin: 0 !important;
+        padding: 8px 10px !important;
+        border-radius: 10px !important;
+        background: rgba(255, 255, 255, 0.08) !important;
+        border: 1px solid rgba(255, 255, 255, 0.12) !important;
+        box-sizing: border-box;
+      }
+
+      .cart-checkout-panel .promo-container input {
+        flex: 1;
+        min-width: 0;
+        padding: 8px 10px !important;
+        font-size: 13px !important;
+        border-radius: 8px !important;
+        background: rgba(0, 0, 0, 0.2) !important;
+        border: 1px solid rgba(255, 255, 255, 0.05) !important;
+        color: #ffffff !important;
+      }
+
+      .cart-checkout-panel .promo-container button {
+        flex-shrink: 0;
+        padding: 8px 12px !important;
+        font-size: 13px !important;
+        font-weight: 600 !important;
+        border-radius: 10px !important;
+        background: rgba(255, 255, 255, 0.08) !important;
+        border: 1px solid rgba(255, 255, 255, 0.12) !important;
+        color: #ffffff !important;
+        cursor: pointer;
+        transition: all 0.2s ease !important;
+        -webkit-tap-highlight-color: transparent;
+      }
+
+      .cart-checkout-panel .promo-container button:hover,
+      .cart-checkout-panel .promo-container button:active {
+        background: rgba(255, 255, 255, 0.16) !important;
+      }
+
+      .cart-promocode-block {
+        padding: 8px 10px;
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.08) !important;
+        border: 1px solid rgba(255, 255, 255, 0.12) !important;
+      }
+
+      .cart-promocode-block .promocode-row input {
+        margin-bottom: 0;
+      }
+
+      .cart-bar {
+        display: none !important;
+        position: relative;
+        bottom: auto;
+        left: auto;
+        right: auto;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.5rem;
+        width: 100% !important;
+        padding: 10px 12px !important;
+        border-radius: 10px !important;
+        background: rgba(255, 255, 255, 0.08) !important;
+        border: 1px solid rgba(255, 255, 255, 0.12) !important;
+        color: #ffffff !important;
+        box-shadow: none !important;
+        font-size: 14px !important;
+        font-weight: 600;
+        line-height: 1.25;
+        cursor: pointer;
+        will-change: transform;
+        transition:
+          transform 0.18s ease,
+          opacity 0.2s ease,
+          background 0.2s ease !important;
+        -webkit-tap-highlight-color: transparent;
+        box-sizing: border-box;
+      }
+
+      .cart-bar:hover,
+      .cart-bar:active {
+        background: rgba(255, 255, 255, 0.16) !important;
+      }
+
+      .cart-bar:active {
+        transform: scale(0.98);
+      }
+
+      .cart-bar.cart-bar--visible {
+        display: flex !important;
+      }
+
+      .active-order-floating-btn {
+        position: fixed;
+        bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+        left: 5%;
+        width: 90%;
+        background: linear-gradient(135deg, #ff9800, #f57c00);
+        color: white;
+        padding: 12px;
+        border-radius: 10px;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+        z-index: 999;
+        text-align: center;
+        font-weight: bold;
+        cursor: pointer;
+        box-sizing: border-box;
+        -webkit-tap-highlight-color: transparent;
+      }
+
+      .active-order-floating-btn.active-order-floating-btn--above-cart {
+        bottom: calc(148px + env(safe-area-inset-bottom, 0px));
+      }
+
+      .active-order-btn-content {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        font-size: 14px;
+        line-height: 1.25;
+      }
+
+      .active-order-floating-btn .btn-text {
+        flex: 1;
+        text-align: left;
+      }
+
+      .pulse-icon {
+        display: inline-block;
+        animation: active-order-pulse 1.5s infinite;
+        flex-shrink: 0;
+      }
+
+      @keyframes active-order-pulse {
+        0% {
+          transform: scale(1);
+        }
+        50% {
+          transform: scale(1.2);
+        }
+        100% {
+          transform: scale(1);
+        }
+      }
+
+      #cart-total {
+        font-variant-numeric: tabular-nums;
+      }
+
+      #promo-status-message {
+        font-size: 0.82rem;
+        margin: 0;
+        padding: 0 4px 4px;
+        color: rgba(255, 255, 255, 0.85);
+      }
+
+      .cart-promo-discount-line {
+        display: none;
+        font-size: 0.82rem;
+        font-weight: 600;
+        color: #28a745;
+        text-align: right;
+        padding: 0 4px 4px;
+      }
+
+      /* Экран заказа: внешне скрыт без display:none — так анимация и первый кадр не блокируются */
+      .order-screen {
+        display: flex !important;
+        position: fixed;
+        inset: 0;
+        z-index: 50;
+        flex-direction: column;
+        background: rgba(20, 24, 33, 0.88) !important;
+        backdrop-filter: blur(25px) !important;
+        -webkit-backdrop-filter: blur(25px) !important;
+        border: none;
+        color: #ffffff !important;
+        padding-top: env(safe-area-inset-top, 0px);
+        padding-bottom: env(safe-area-inset-bottom, 0px);
+        overflow: hidden;
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+        transform: translateY(10px);
+        transition:
+          opacity 0.18s ease-out,
+          transform 0.2s ease-out,
+          visibility 0s linear 0.2s;
+      }
+
+      .order-screen.order-screen--open {
+        opacity: 1;
+        visibility: visible;
+        pointer-events: auto;
+        transform: translateY(0);
+        transition:
+          opacity 0.16s ease-out,
+          transform 0.18s ease-out,
+          visibility 0s;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .order-screen,
+        .order-screen.order-screen--open {
+          transition-duration: 0.01ms;
+        }
+      }
+
+      .order-screen-inner {
+        flex: 1;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+        padding: 12px 14px 16px;
+      }
+
+      .order-back-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+        margin: 0 0 10px;
+        padding: 8px 12px;
+        font-size: 14px;
+        font-weight: 600;
+        line-height: 1.2;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.08) !important;
+        color: #ffffff !important;
+        cursor: pointer;
+        -webkit-tap-highlight-color: transparent;
+      }
+
+      .order-screen-title {
+        margin: 0 0 12px;
+        font-size: 18px;
+        font-weight: 700;
+        line-height: 1.25;
+        color: #ffffff !important;
+      }
+
+      .order-status-container {
+        display: none;
+        text-align: center;
+        padding: 20px 12px;
+        margin: 0 0 14px;
+        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.05) !important;
+        backdrop-filter: blur(12px) !important;
+        -webkit-backdrop-filter: blur(12px) !important;
+        border: 1px solid rgba(255, 255, 255, 0.08) !important;
+        box-sizing: border-box;
+      }
+
+      .order-status-container.is-visible {
+        display: block;
+      }
+
+      .order-status-container .order-status-spinner {
+        width: 36px;
+        height: 36px;
+        margin: 0 auto 15px;
+        border: 3px solid rgba(255, 255, 255, 0.15);
+        border-top-color: rgba(255, 255, 255, 0.85);
+        border-radius: 50%;
+        animation: order-status-spin 0.9s linear infinite;
+      }
+
+      @keyframes order-status-spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      .order-status-container h3 {
+        color: #fff;
+        font-size: 18px;
+        margin: 0 0 10px;
+        font-weight: 600;
+      }
+
+      .order-status-container p {
+        color: rgba(255, 255, 255, 0.6);
+        font-size: 14px;
+        margin: 0;
+        line-height: 1.35;
+      }
+
+      .order-weight-pending-banner {
+        margin: 0;
+        padding: 14px 16px;
+        border-radius: 12px;
+        border: 1px solid rgba(255, 193, 7, 0.35);
+        background: linear-gradient(
+          135deg,
+          rgba(255, 193, 7, 0.18) 0%,
+          rgba(255, 152, 0, 0.1) 100%
+        );
+        color: rgba(255, 255, 255, 0.92);
+        font-size: 14px;
+        line-height: 1.45;
+        text-align: center;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+      }
+
+      .order-status-total {
+        margin: 12px 0 0;
+        font-size: 15px;
+        color: rgba(255, 255, 255, 0.85);
+      }
+
+      .order-status-total strong {
+        color: #fff;
+        font-size: 18px;
+      }
+
+      #order-screen #dynamic-action-btn {
+        margin: 0 12px 14px;
+      }
+
+      .dynamic-action-button {
+        display: block;
+        width: calc(100% - 24px);
+        max-width: 100%;
+        margin-top: 0;
+        padding: 15px;
+        border: none;
+        border-radius: 12px;
+        font-size: 16px;
+        font-weight: bold;
+        text-align: center;
+        transition: all 0.3s ease;
+        -webkit-tap-highlight-color: transparent;
+        box-sizing: border-box;
+      }
+
+      .dynamic-action-button:disabled {
+        background-color: #3a3a3c !important;
+        color: #8e8e93 !important;
+        cursor: not-allowed;
+      }
+
+      .dynamic-action-button.ready-to-pay {
+        background: linear-gradient(135deg, #4cd964, #28cd41) !important;
+        color: #ffffff !important;
+        cursor: pointer;
+        box-shadow: 0 4px 15px rgba(40, 205, 65, 0.3);
+      }
+
+      .btn-track-order {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        margin-top: 14px;
+        padding: 12px 20px;
+        border: none;
+        border-radius: 12px;
+        font-size: 15px;
+        font-weight: 600;
+        cursor: pointer;
+        -webkit-tap-highlight-color: transparent;
+      }
+
+      .btn-track-order {
+        background: #ffffff !important;
+        color: #1a1a1a !important;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+      }
+
+      #tracking-screen {
+        display: flex;
+        flex-direction: column;
+        background: #f5f5f5 !important;
+      }
+
+      #tracking-screen .tracking-screen-header {
+        padding: 14px 16px;
+        background: #ffffff !important;
+        box-shadow: 0 1px 0 rgba(0, 0, 0, 0.06) !important;
+        border-bottom: none;
+      }
+
+      #tracking-screen .tracking-screen-title {
+        margin: 0;
+        font-size: 16px;
+        font-weight: 600;
+        color: #1a1a1a;
+        letter-spacing: -0.02em;
+      }
+
+      #tracking-screen .tracking-screen-close {
+        background: #f2f2f2 !important;
+        color: #333333 !important;
+        border: none;
+        padding: 8px 14px;
+        border-radius: 20px;
+        font-size: 13px;
+        font-weight: 500;
+        cursor: pointer;
+      }
+
+      #tracking-screen #tracking-media-container {
+        flex-shrink: 0;
+        width: 100%;
+        max-height: 150px;
+        height: 150px;
+        overflow: hidden;
+        background: #000;
+        border-radius: 0 0 12px 12px;
+        display: none;
+      }
+
+      #tracking-screen #tracking-media-container:not([hidden]) {
+        display: block;
+      }
+
+      #tracking-screen #tracking-media-container img,
+      #tracking-screen #tracking-media-container video {
+        width: 100%;
+        height: 100%;
+        max-height: 150px;
+        object-fit: cover;
+        display: block;
+      }
+
+      .admin-map-banner-section {
+        margin-top: 24px;
+        padding-top: 20px;
+        border-top: 1px solid rgba(255, 255, 255, 0.08);
+      }
+
+      #map-banner-preview {
+        margin-top: 8px;
+        min-height: 24px;
+        font-size: 12px;
+        color: #9aa0a6;
+      }
+
+      #map-banner-preview img,
+      #map-banner-preview video {
+        max-width: 100%;
+        max-height: 120px;
+        border-radius: 8px;
+        display: block;
+        margin-top: 6px;
+      }
+
+      #tracking-screen #map {
+        flex: 1;
+        min-height: 0;
+        width: 100%;
+        background: #f5f5f5;
+      }
+
+      #tracking-screen .leaflet-container {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        background: #f5f5f5;
+      }
+
+      #tracking-screen .leaflet-control-zoom {
+        border: none !important;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1) !important;
+        border-radius: 10px !important;
+        overflow: hidden;
+      }
+
+      #tracking-screen .leaflet-control-zoom a {
+        background: #ffffff !important;
+        color: #333333 !important;
+        border: none !important;
+        width: 36px;
+        height: 36px;
+        line-height: 36px;
+        font-size: 18px;
+      }
+
+      #tracking-screen .leaflet-control-zoom a:hover {
+        background: #fafafa !important;
+      }
+
+      .order-status-container .btn-track-order {
+        margin-top: 15px;
+        width: 100%;
+        padding: 12px 14px;
+        font-size: 15px;
+        font-weight: 600;
+        border-radius: 10px;
+        border: 1px solid rgba(255, 255, 255, 0.12) !important;
+        background: rgba(255, 255, 255, 0.08) !important;
+        color: #ffffff !important;
+        cursor: pointer;
+        -webkit-tap-highlight-color: transparent;
+      }
+
+      .order-client-form.is-hidden {
+        display: none !important;
+      }
+
+      .order-items-list {
+        margin: 0 0 14px;
+      }
+
+      .order-item-row {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 10px 0;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      }
+
+      .order-item-info {
+        flex: 1;
+        min-width: 0;
+      }
+
+      .order-item-name,
+      .order-item-meta {
+        margin: 0;
+        font-size: 14px;
+        line-height: 1.3;
+      }
+
+      .order-item-name {
+        font-weight: 600;
+        margin-bottom: 2px;
+        color: #ffffff !important;
+      }
+
+      .order-item-meta {
+        opacity: 0.82;
+        font-weight: 500;
+        color: #b8f5c3 !important;
+      }
+
+      .order-item-controls {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        flex-shrink: 0;
+      }
+
+      .order-qty-btn {
+        width: 28px;
+        height: 28px;
+        min-width: 28px;
+        padding: 0;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 4px;
+        font-size: 14px;
+        font-weight: 600;
+        line-height: 1;
+        cursor: pointer;
+        background: rgba(255, 255, 255, 0.1) !important;
+        color: #ffffff !important;
+        -webkit-tap-highlight-color: transparent;
+      }
+
+      .order-qty-btn--disabled,
+      .order-qty-btn:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+        pointer-events: none;
+      }
+
+      .product-card .order-qty-btn--disabled,
+      .product-card .order-qty-btn:disabled {
+        opacity: 0.35;
+      }
+
+      .order-qty-value {
+        min-width: 1.25rem;
+        font-size: 14px;
+        font-weight: 600;
+        text-align: center;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .order-item-remove {
+        padding: 0;
+        border: none;
+        border-radius: 4px;
+        font-size: 14px;
+        cursor: pointer;
+        background: transparent;
+        color: #c62828;
+        font-weight: 600;
+        -webkit-tap-highlight-color: transparent;
+      }
+
+      .order-item-remove.order-item-remove--icon {
+        width: 28px;
+        height: 28px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+        font-size: 0.95rem;
+        line-height: 1;
+      }
+
+      .order-client-form .field {
+        margin-bottom: 0;
+      }
+
+      .order-client-form label {
+        display: block;
+        margin-bottom: 6px;
+        font-size: 13px;
+        font-weight: 600;
+        line-height: 1.2;
+        color: #ffffff !important;
+      }
+
+      .order-client-form input,
+      .order-client-form select,
+      .order-client-form textarea {
+        width: 100%;
+        padding: 10px;
+        margin-bottom: 12px;
+        font-size: 15px;
+        line-height: 1.3;
+        border-radius: 8px;
+        border: 1px solid rgba(255, 255, 255, 0.15) !important;
+        background: rgba(255, 255, 255, 0.08) !important;
+        color: #ffffff !important;
+        box-sizing: border-box;
+      }
+
+      .order-client-form textarea {
+        min-height: 72px;
+        resize: vertical;
+      }
+
+      #address-field-wrap.is-hidden {
+        display: none !important;
+      }
+
+      @media (max-width: 340px) {
+        .main-layout {
+          grid-template-columns: 84px minmax(0, 1fr);
+        }
+
+        .category-nav-label,
+        .category-name,
+        .category-title {
+          font-size: 10px !important;
+        }
+      }
+
+    </style>
+  </head>
+  <body>
+    <!-- Админка отдельно от .main-layout — не влияет на сетку каталога -->
+    <div class="shop-admin-area">
+      <div id="admin-panel-toggle-container">
+        <!-- Кнопка «Управление магазином» — переключатель режима редактирования -->
+        <button
+          id="toggle-admin-mode-btn"
+          class="admin-panel-btn"
+          type="button"
+          style="display: none;"
+          onclick="window.toggleAdminMode()"
+        >
+          ⚙️ Управление магазином
+        </button>
+      </div>
+
+      <div id="admin-management-block">
+      <div id="admin-panel">
+        <div class="admin-tabs-nav">
+          <button
+            type="button"
+            class="admin-tab-btn active"
+            data-admin-main-tab="tab-stats"
+            onclick="window.switchAdminTab('tab-stats', this)"
+          >
+            📊 Аналитика
+          </button>
+          <button
+            type="button"
+            class="admin-tab-btn"
+            data-admin-main-tab="tab-products"
+            onclick="window.switchAdminTab('tab-products', this)"
+          >
+            📦 Товары
+          </button>
+          <button
+            type="button"
+            class="admin-tab-btn"
+            data-admin-main-tab="tab-broadcast"
+            onclick="window.switchAdminTab('tab-broadcast', this)"
+          >
+            📢 Рассылка
+          </button>
+          <button
+            type="button"
+            class="admin-tab-btn"
+            data-admin-main-tab="tab-banner"
+            onclick="window.switchAdminTab('tab-banner', this)"
+          >
+            🖼️ Баннер
+          </button>
+          <button class="admin-tab-btn" data-admin-main-tab="tab-promocodes" onclick="window.switchAdminTab('tab-promocodes')">🎟️ Промокоды</button>
+          <button
+            type="button"
+            class="admin-tab-btn"
+            data-admin-main-tab="tab-couriers"
+            onclick="window.switchAdminTab('tab-couriers', this)"
+          >
+            🛵 Курьеры
+          </button>
+          <button
+            type="button"
+            class="admin-tab-btn admin-receipts-menu-btn"
+            onclick="window.openAdminReceiptsPasswordModal()"
+          >
+            🧾 Просмотр чеков
+          </button>
+        </div>
+
+        <div id="tab-receipts" class="admin-tab-content" style="display: none">
+          <div class="admin-receipts-section">
+            <p class="admin-form-title">Управление чеками</p>
+            <div class="admin-receipts-toolbar">
+              <button
+                type="button"
+                class="admin-submit-btn"
+                onclick="window.exitAdminReceiptsView()"
+              >
+                ← Назад к меню
+              </button>
+              <button
+                type="button"
+                class="admin-submit-btn"
+                onclick="window.loadAdminReceipts(true)"
+              >
+                🔄 Обновить
+              </button>
+            </div>
+            <div id="admin-receipts-list" class="admin-receipts-list" aria-live="polite"></div>
+          </div>
+        </div>
+
+        <div id="tab-stats" class="admin-tab-content">
+          <div class="admin-analytics-block">
+            <p class="admin-form-title">Аналитика продаж</p>
+        <button
+          type="button"
+          class="admin-submit-btn"
+          onclick="window.loadAdminStats()"
+        >
+          📊 Обновить аналитику
+        </button>
+        <div
+          id="admin-stats-output"
+          class="admin-stats-output"
+          aria-live="polite"
+        ></div>
+          </div>
+        </div>
+
+        <div id="tab-promocodes" class="admin-tab-content" style="display: none">
+          <h3>Управление промокодами</h3>
+          <div style="margin-bottom: 15px">
+            <input
+              type="text"
+              id="promo-code-input"
+              placeholder="Код (например, SALE20)"
+              style="padding: 8px; border-radius: 8px; border: 1px solid #ccc; margin-right: 5px"
+            />
+            <input
+              type="number"
+              id="promo-discount-input"
+              placeholder="Скидка в %"
+              min="1"
+              max="99"
+              style="padding: 8px; border-radius: 8px; border: 1px solid #ccc; width: 90px; margin-right: 5px"
+            />
+            <button
+              type="button"
+              onclick="window.createPromocode()"
+              style="padding: 8px 15px; background: #28a745; color: white; border: none; border-radius: 8px; font-weight: bold"
+            >
+              Добавить
+            </button>
+          </div>
+          <div id="admin-promocodes-list"></div>
+        </div>
+
+        <div id="tab-broadcast" class="admin-tab-content" style="display: none">
+          <div class="admin-broadcast-block">
+            <p class="admin-form-title">Рассылка клиентам</p>
+            <div class="field">
+              <label for="admin-broadcast-text">Текст рассылки</label>
+              <textarea
+                id="admin-broadcast-text"
+                rows="4"
+                placeholder="Напишите акцию, новинку или напоминание для клиентов…"
+              ></textarea>
+            </div>
+            <button
+              type="button"
+              class="btn-broadcast-send"
+              onclick="window.sendBroadcast()"
+            >
+              📢 Отправить рассылку клиентам
+            </button>
+          </div>
+        </div>
+
+        <div id="tab-products" class="admin-tab-content" style="display: none">
+          <div class="admin-tabs" role="tablist">
+            <button
+              type="button"
+              class="admin-tab is-active"
+              data-admin-tab="category"
+              onclick="switchAdminCatalogTab('category')"
+            >
+              Категория
+            </button>
+            <button
+              type="button"
+              class="admin-tab"
+              data-admin-tab="product"
+              onclick="switchAdminCatalogTab('product')"
+            >
+              Товар
+            </button>
+          </div>
+
+      <div
+        id="admin-tab-category"
+        class="admin-tab-panel is-active"
+        role="tabpanel"
+      >
+        <p class="admin-form-title">Новая категория</p>
+        <form id="admin-category-form" onsubmit="return false;">
+          <div class="field">
+            <label for="admin-new-category-title">Название</label>
+            <input
+              type="text"
+              id="admin-new-category-title"
+              name="category_title"
+              placeholder="Например: Колбасы"
+              autocomplete="off"
+            />
+          </div>
+          <div class="field">
+            <label for="category-file">Иконка категории (файл)</label>
+            <input
+              type="file"
+              id="category-file"
+              name="category_file"
+              accept="image/*"
+            />
+            <p class="file-field-hint">
+              Изображение с телефона или компьютера (JPEG, PNG, WebP).
+            </p>
+          </div>
+          <button
+            type="button"
+            id="admin-add-category-btn"
+            class="admin-submit-btn"
+            onclick="addCategory()"
+          >
+            Добавить категорию
+          </button>
+        </form>
+      </div>
+
+      <div id="admin-tab-product" class="admin-tab-panel" role="tabpanel">
+        <p class="admin-form-title">Новый товар</p>
+        <form id="admin-product-form" onsubmit="return false;">
+          <div class="field">
+            <label for="admin-category">Категория</label>
+            <select id="admin-category" name="category"></select>
+          </div>
+          <div class="field">
+            <label for="admin-name">Название</label>
+            <input
+              type="text"
+              id="admin-name"
+              name="name"
+              placeholder="Название товара"
+              autocomplete="off"
+            />
+          </div>
+          <div class="field">
+            <span class="field-label">Тип товара</span>
+            <div class="admin-unit-type-toggle" role="group" aria-label="Тип товара">
+              <button
+                type="button"
+                class="admin-unit-type-btn is-active"
+                data-unit-type="pcs"
+                onclick="window.setAdminUnitType('pcs', this)"
+              >
+                Штучный товар
+              </button>
+              <button type="button" class="admin-unit-type-btn" data-unit-type="weight" onclick="window.setAdminUnitType('weight', this)">
+                Весовой товар (цена за 100г)
+              </button>
+            </div>
+            <select id="admin-unit-type" name="unit_type" class="admin-unit-type-select-hidden" tabindex="-1" aria-hidden="true">
+              <option value="pcs" selected>Штучный товар</option>
+              <option value="weight">Весовой товар (цена за 100г)</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="admin-price" id="admin-price-label">Цена (₴ за шт.)</label>
+            <input
+              type="number"
+              id="admin-price"
+              name="price"
+              min="0"
+              step="0.01"
+              placeholder="0"
+            />
+          </div>
+          <div class="field">
+            <label for="product-file">Фото товара (файл)</label>
+            <input
+              type="file"
+              id="product-file"
+              name="product_file"
+              accept="image/*"
+            />
+            <p class="file-field-hint">Фото для карточки в каталоге.</p>
+          </div>
+          <button
+            type="button"
+            id="admin-add-product-btn"
+            class="admin-submit-btn"
+            onclick="addNewProduct()"
+          >
+            Сохранить товар
+          </button>
+        </form>
+      </div>
+        </div>
+
+      <div id="tab-banner" class="admin-tab-content" style="display: none">
+        <div class="admin-banner-section">
+          <p class="admin-form-title">Главный баннер магазина (витрина)</p>
+          <input type="file" id="banner-input" accept="image/*" />
+          <button type="button" class="admin-submit-btn" onclick="window.uploadBanner()">
+            Обновить баннер витрины
+          </button>
+        </div>
+        <div class="admin-map-banner-section">
+          <p class="admin-form-title">Медиа-баннер над картами (фото или видео)</p>
+          <p class="file-field-hint" style="margin: 0 0 10px">
+            Фото (.jpg, .png) или видео (.mp4, .mov, .webm) — показывается над картой трекинга.
+          </p>
+          <input type="file" id="map-banner-input" accept="image/*,video/*" />
+          <div id="map-banner-preview" aria-live="polite"></div>
+        </div>
+      </div>
+
+      <div id="tab-couriers" class="admin-tab-content" style="display: none">
+        <div class="admin-couriers-section">
+          <p class="admin-form-title">Управление курьерами</p>
+          <form id="admin-courier-form" onsubmit="return false;">
+            <div class="field">
+              <label for="admin-courier-name">Имя курьера</label>
+              <input
+                type="text"
+                id="admin-courier-name"
+                name="courier_name"
+                placeholder="Например: Али"
+                autocomplete="off"
+              />
+            </div>
+            <div class="field">
+              <label for="admin-courier-id">Telegram ID курьера</label>
+              <input
+                type="text"
+                id="admin-courier-id"
+                name="courier_id"
+                inputmode="numeric"
+                placeholder="123456789"
+                autocomplete="off"
+              />
+            </div>
+            <button
+              type="button"
+              class="admin-submit-btn"
+              onclick="window.addCourier()"
+            >
+              Добавить курьера
+            </button>
+          </form>
+          <div id="admin-couriers-list" aria-live="polite"></div>
+        </div>
+      </div>
+      </div>
+      </div>
+    </div>
+
+    <main class="app">
+      <div class="banner-container">
+        <img
+          id="main-banner"
+          src="uploads/banner.jpg"
+          alt="Халяль Магазин Баннер"
+          class="banner-img"
+          loading="eager"
+          fetchpriority="high"
+          decoding="async"
+          onload="this.classList.add('is-visible')"
+        />
+      </div>
+
+      <div class="main-layout">
+        <div
+          id="categories-sidebar"
+          class="sidebar-categories"
+          aria-label="Категории"
+        ></div>
+
+        <div id="catalog-content" class="catalog-content">
+          <h1 class="shop-title">Халяль Маркет</h1>
+          <div id="products-grid">
+            <div id="catalog-container"></div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <div
+      id="active-order-floating-button"
+      class="active-order-floating-btn"
+      style="display: none"
+      role="button"
+      tabindex="0"
+      onclick="goToActiveOrderTrack()"
+      onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();goToActiveOrderTrack();}"
+    >
+      <div class="active-order-btn-content">
+        <span class="pulse-icon" aria-hidden="true">📦</span>
+        <span class="btn-text">Ваш заказ обрабатывается / доставляется</span>
+      </div>
+    </div>
+
+    <div id="cart-checkout-panel" class="cart-checkout-panel">
+      <div class="promo-container">
+        <input type="text" id="client-promo-input" placeholder="Промокод" autocomplete="off" />
+        <button type="button" onclick="window.applyClientPromocode()">Применить</button>
+      </div>
+      <div id="promo-status-message" style="font-size: 0.85rem; margin-top: -10px; margin-bottom: 10px; padding: 0 5px; display: none;" aria-live="polite"></div>
+      <div id="cart-promo-discount-line" class="cart-promo-discount-line"></div>
+      <div
+        id="cart-bar"
+        class="cart-bar"
+        role="button"
+        tabindex="0"
+        onclick="openOrderModal()"
+      >
+        <span id="cart-count">В корзине: 0 товаров</span>
+        <span id="cart-total">0 ₴</span>
+      </div>
+    </div>
+
+    <div id="order-screen" class="order-screen" aria-hidden="true">
+      <div class="order-screen-inner">
+        <button type="button" class="order-back-btn" onclick="closeOrderModal()">
+          ⬅️ Назад
+        </button>
+        <h2 class="order-screen-title">Оформление заказа</h2>
+
+        <div id="order-items-list" class="order-items-list" role="list"></div>
+
+        <div
+          id="order-status-container"
+          class="order-status-container"
+          aria-live="polite"
+          aria-hidden="true"
+        ></div>
+        <button
+          type="button"
+          id="dynamic-action-btn"
+          class="dynamic-action-button"
+          disabled
+          style="display: none"
+        >
+          Ваш заказ взвешивается...
+        </button>
+
+        <form id="order-client-form" class="order-client-form" onsubmit="return false;">
+          <div class="field">
+            <label for="client-name">Ваше имя</label>
+            <input type="text" id="client-name" name="client_name" autocomplete="name" />
+          </div>
+          <div class="field">
+            <label for="client-phone">Телефон</label>
+            <input
+              type="tel"
+              id="client-phone"
+              name="client_phone"
+              autocomplete="tel"
+              inputmode="tel"
+            />
+          </div>
+          <div class="field">
+            <label for="delivery-method">Способ доставки</label>
+            <select id="delivery-method" name="delivery_method">
+              <option value="pickup">Самовывоз</option>
+              <option value="courier">Доставка курьером</option>
+            </select>
+          </div>
+          <div class="field" id="address-field-wrap">
+            <label for="client-address">Адрес доставки</label>
+            <div style="position: relative">
+              <input
+                type="text"
+                id="client-address"
+                name="client_address"
+                placeholder="Введите улицу и номер дома в Днепре"
+                autocomplete="off"
+                data-checkout-address="1"
+              />
+              <div
+                id="address-suggestions"
+                style="
+                  display: none;
+                  position: absolute;
+                  top: 100%;
+                  left: 0;
+                  width: 100%;
+                  background: #fff;
+                  border: 1px solid #ccc;
+                  border-top: none;
+                  z-index: 10000;
+                  max-height: 200px;
+                  overflow-y: auto;
+                  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+                  border-radius: 0 0 8px 8px;
+                "
+              ></div>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <style>
+      .courier-btn-primary {
+        width: 100%;
+        max-width: 320px;
+        padding: 16px 20px;
+        font-size: 18px;
+        font-weight: 700;
+        border: none;
+        border-radius: 14px;
+        background: linear-gradient(135deg, #10b981, #059669);
+        color: #fff;
+        cursor: pointer;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .courier-btn-primary:disabled {
+        opacity: 0.7;
+        cursor: not-allowed;
+      }
+    </style>
+
+    <div
+      id="courier-delivery-screen"
+      style="
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        z-index: 9998;
+        background: #11161a;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        box-sizing: border-box;
+        text-align: center;
+      "
+    >
+      <h2 style="margin: 0 0 12px; font-size: 22px; color: #fff">
+        Заказ №<span id="courier-order-id-label">—</span>
+      </h2>
+      <p style="margin: 0 0 28px; color: rgba(255, 255, 255, 0.65); font-size: 15px; line-height: 1.45">
+        Нажмите «Поехали», чтобы перевести заказ в статус «В пути» и сразу открыть Google Maps с маршрутом до клиента.
+      </p>
+      <button
+        type="button"
+        id="start-delivery-btn"
+        class="courier-btn-primary"
+        onclick="startCourierRouteFromBtn()"
+      >
+        🚀 Поехали
+      </button>
+      <p
+        id="courier-go-status"
+        style="margin: 16px 0 0; min-height: 20px; font-size: 14px; color: rgba(255, 255, 255, 0.5)"
+        aria-live="polite"
+      ></p>
+    </div>
+
+    <div
+      id="tracking-screen"
+      class="screen hidden"
+      style="
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        z-index: 9999;
+        flex-direction: column;
+      "
+    >
+      <div
+        class="tracking-screen-header"
+        style="display: flex; align-items: center; justify-content: space-between; flex-shrink: 0"
+      >
+        <h3 class="tracking-screen-title">Отслеживание доставки</h3>
+        <button
+          type="button"
+          class="tracking-screen-close"
+          onclick="window.closeTracking()"
+        >
+          Закрыть
+        </button>
+      </div>
+      <div id="tracking-media-container" hidden aria-hidden="true"></div>
+      <div id="map"></div>
+    </div>
+
+    <div
+      id="admin-edit-product-modal"
+      class="admin-modal-backdrop weight-modal-backdrop"
+      style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0, 0, 0, 0.6); z-index: 99998; align-items: center; justify-content: center"
+    >
+      <div
+        class="weight-modal-content"
+        style="background: #1c222b; border: 1px solid rgba(255, 255, 255, 0.1); padding: 20px; border-radius: 16px; width: 90%; max-width: 360px; text-align: left; backdrop-filter: blur(20px)"
+      >
+        <h3 style="margin-top: 0; color: #fff; text-align: center">Редактировать товар</h3>
+        <input type="hidden" id="edit-product-id" value="" />
+        <div class="field" style="margin-bottom: 12px">
+          <label for="edit-product-name" style="display: block; margin-bottom: 4px; color: #ccc; font-size: 0.85rem">Название</label>
+          <input
+            type="text"
+            id="edit-product-name"
+            autocomplete="off"
+            style="width: 100%; padding: 8px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.15); background: rgba(0,0,0,0.25); color: #fff; box-sizing: border-box"
+          />
+        </div>
+        <div class="field" style="margin-bottom: 12px">
+          <span class="field-label" style="display: block; margin-bottom: 6px; color: #ccc; font-size: 0.85rem">Тип товара</span>
+          <div class="admin-unit-type-toggle" role="group" aria-label="Тип товара при редактировании">
+            <button type="button" class="admin-unit-type-btn" data-unit-type="pcs" onclick="window.setAdminUnitType('pcs', this)">Штучный товар</button>
+            <button type="button" class="admin-unit-type-btn" data-unit-type="weight" onclick="window.setAdminUnitType('weight', this)">Весовой товар (цена за 100г)</button>
+          </div>
+          <select id="edit-admin-unit-type" class="admin-unit-type-select-hidden" tabindex="-1" aria-hidden="true">
+            <option value="pcs">Штучный товар</option>
+            <option value="weight">Весовой товар (цена за 100г)</option>
+          </select>
+        </div>
+        <div class="field" style="margin-bottom: 16px">
+          <label for="edit-admin-price" id="edit-admin-price-label" style="display: block; margin-bottom: 4px; color: #ccc; font-size: 0.85rem">Цена (₴ за шт.)</label>
+          <input
+            type="number"
+            id="edit-admin-price"
+            min="0"
+            step="0.01"
+            style="width: 100%; padding: 8px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.15); background: rgba(0,0,0,0.25); color: #fff; box-sizing: border-box"
+          />
+        </div>
+        <div style="display: flex; gap: 10px">
+          <button
+            type="button"
+            onclick="window.closeEditProductModal()"
+            style="flex: 1; padding: 10px; background: #555; color: #fff; border: none; border-radius: 8px; font-weight: bold; cursor: pointer"
+          >
+            Отмена
+          </button>
+          <button
+            type="button"
+            onclick="window.saveEditProductModal()"
+            style="flex: 1; padding: 10px; background: #28a745; color: #fff; border: none; border-radius: 8px; font-weight: bold; cursor: pointer"
+          >
+            Сохранить
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div
+      id="weight-modal"
+      class="admin-modal-backdrop weight-modal-backdrop"
+      style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0, 0, 0, 0.6); z-index: 99999; align-items: center; justify-content: center"
+    >
+      <div
+        class="weight-modal-content"
+        style="background: #1c222b; border: 1px solid rgba(255, 255, 255, 0.1); padding: 20px; border-radius: 16px; width: 85%; max-width: 320px; text-align: center; backdrop-filter: blur(20px)"
+      >
+        <h3 id="weight-modal-title" style="margin-top: 0; color: #fff">Выбор веса</h3>
+        <p id="weight-modal-price-info" style="color: #888; font-size: 0.9rem"></p>
+
+        <div style="margin: 20px 0; display: flex; align-items: center; justify-content: center; gap: 15px">
+          <button
+            type="button"
+            onclick="window.changeModalWeight(-100)"
+            style="width: 40px; height: 40px; border-radius: 50%; background: #dc3545; color: #fff; border: none; font-size: 1.2rem; font-weight: bold"
+          >
+            -
+          </button>
+          <span id="weight-modal-value" style="font-size: 1.4rem; font-weight: bold; color: #fff; min-width: 100px">100 г</span>
+          <button
+            type="button"
+            onclick="window.changeModalWeight(100)"
+            style="width: 40px; height: 40px; border-radius: 50%; background: #28a745; color: #fff; border: none; font-size: 1.2rem; font-weight: bold"
+          >
+            +
+          </button>
+        </div>
+
+        <p style="font-size: 1.1rem; margin-bottom: 20px">
+          Итого: <span id="weight-modal-total-price" style="color: #28a745; font-weight: bold">0 грн</span>
+        </p>
+
+        <div style="display: flex; gap: 10px">
+          <button
+            type="button"
+            onclick="window.closeWeightModal()"
+            style="flex: 1; padding: 10px; background: #555; color: #fff; border: none; border-radius: 8px; font-weight: bold"
+          >
+            Отмена
+          </button>
+          <button
+            type="button"
+            id="weight-modal-confirm-btn"
+            style="flex: 1; padding: 10px; background: #28a745; color: #fff; border: none; border-radius: 8px; font-weight: bold"
+          >
+            В корзину
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div
+      id="admin-receipts-password-modal"
+      class="admin-modal-backdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="admin-receipts-password-title"
+    >
+      <div class="admin-receipts-password-dialog">
+        <h3 id="admin-receipts-password-title">Доступ к чекам</h3>
+        <p>Введите пароль для доступа к финансовым чекам</p>
+        <input
+          type="password"
+          id="admin-receipts-password-modal-input"
+          placeholder="Пароль"
+          autocomplete="current-password"
+        />
+        <div class="admin-receipts-password-actions">
+          <button
+            type="button"
+            class="admin-receipts-password-cancel"
+            onclick="window.closeAdminReceiptsPasswordModal()"
+          >
+            Отмена
+          </button>
+          <button
+            type="button"
+            class="admin-receipts-password-submit"
+            onclick="window.submitAdminReceiptsPassword()"
+          >
+            Открыть
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <script src="app.js?v=14.6.0" defer></script>
+
+    <style>
+      /* ⭐ КРИТИЧЕСКИ ВАЖНО: Форсированные стили Google Autocomplete для Telegram WebView */
+      .pac-container,
+      div.pac-container,
+      body .pac-container {
+        background-color: #1c222b !important;
+        background: #1c222b !important;
+        border: 1px solid #3a3a3c !important;
+        border-radius: 12px !important;
+        z-index: 999999 !important;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5) !important;
+        font-family: inherit !important;
+        color: #ffffff !important;
+        margin-top: 5px !important;
+        left: auto !important;
+        right: auto !important;
+        width: auto !important;
+        min-width: 250px !important;
+      }
+      .pac-item,
+      .pac-container .pac-item {
+        padding: 12px 16px !important;
+        border-top: none !important;
+        border-bottom: 1px solid #3a3a3c !important;
+        cursor: pointer !important;
+        background-color: #1c222b !important;
+        background: #1c222b !important;
+        color: #ffffff !important;
+      }
+      .pac-item:hover,
+      .pac-item-selected,
+      .pac-item.pac-item-selected,
+      .pac-container .pac-item:hover {
+        background-color: #2c2c2e !important;
+        background: #2c2c2e !important;
+        color: #ffffff !important;
+      }
+      /* Название улицы и НОМЕР ДОМА */
+      .pac-item-query {
+        color: #ffffff !important;
+        font-size: 15px !important;
+        font-weight: 600 !important;
+      }
+      /* Подсвеченный текст, который ввел пользователь */
+      .pac-matched {
+        color: #ff9800 !important;
+        font-weight: bold !important;
+      }
+      /* Остальной текст (город, страна) */
+      .pac-item span:not(.pac-item-query):not(.pac-matched) {
+        color: #8e8e93 !important;
+        font-size: 13px !important;
+      }
+      .pac-icon {
+        display: none !important;
+      }
+      .pac-logo:after {
+        display: none !important;
+      }
+      /* Принудительный перекрас любых дочерних элементов */
+      .pac-container * {
+        color: inherit;
+      }
+      .pac-container .pac-item-query {
+        color: #ffffff !important;
+      }
+    </style>
+  </body>
+</html>

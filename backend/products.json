@@ -1,0 +1,83 @@
+{
+  "categories": [
+    {
+      "id": "cat_1779140277182",
+      "title": "Мясо",
+      "image": "uploads/1779140277182_431830796e.jpg"
+    },
+    {
+      "id": "cat_1779140350113",
+      "title": "Кондитерские изделия",
+      "image": "uploads/1779140350113_0079e5fdab.jpg"
+    },
+    {
+      "id": "cat_1779140367961",
+      "title": "Молочная продукция",
+      "image": "uploads/1779140367961_5edfd64358.jpg"
+    },
+    {
+      "id": "cat_1779140398096",
+      "title": "Снеки, орехи, семечки",
+      "image": "uploads/1779140398096_11deefe844.jpg"
+    },
+    {
+      "id": "cat_1779140411199",
+      "title": "Бакалея и крупы",
+      "image": "uploads/1779140411199_7b42f502e5.jpg"
+    }
+  ],
+  "products": [
+    {
+      "id": "prod_1779141206461",
+      "category_id": "cat_1779140277182",
+      "name": "Филе",
+      "price": 150.0,
+      "image": "uploads/1779141206461_08065d2b84.jpeg",
+      "in_stock": true,
+      "unit_type": "weight",
+      "price_per_unit": "100g",
+      "discount": 0,
+      "is_weight_item": true,
+      "stock_quantity": 0.0
+    },
+    {
+      "id": "prod_1779141235909",
+      "category_id": "cat_1779140277182",
+      "name": "Телятина",
+      "price": 350.0,
+      "image": "uploads/1779141235909_0bf964215b.jpeg",
+      "in_stock": true,
+      "unit_type": "weight",
+      "price_per_unit": "100g",
+      "discount": 0,
+      "is_weight_item": true,
+      "stock_quantity": 0.0
+    },
+    {
+      "id": "prod_1779141272668",
+      "category_id": "cat_1779140277182",
+      "name": "Курица",
+      "price": 230.0,
+      "image": "uploads/1779141272668_d2dfe72bce.jpeg",
+      "in_stock": true,
+      "unit_type": "weight",
+      "price_per_unit": "100g",
+      "discount": 0,
+      "is_weight_item": true,
+      "stock_quantity": 0.0
+    },
+    {
+      "id": "prod_1779228083213",
+      "category_id": "cat_1779140367961",
+      "name": "Молоко 1 литр",
+      "price": 110.0,
+      "image": "uploads/product_04e61b5d3a.webp",
+      "in_stock": false,
+      "unit_type": "pcs",
+      "price_per_unit": "pcs",
+      "discount": 0,
+      "is_weight_item": false,
+      "stock_quantity": 0.0
+    }
+  ]
+}

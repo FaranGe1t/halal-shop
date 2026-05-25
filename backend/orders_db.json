@@ -1,0 +1,15 @@
+{
+  "orders": [
+    {
+      "order_id": "1779048953",
+      "date": "2026-05-17 22:15:54",
+      "date_short": "2026-05-17",
+      "total": 735.0,
+      "client_id": 761898868,
+      "courier_id": "8004084548",
+      "status": "completed",
+      "cart": [],
+      "address": "Улица янтарная 47"
+    }
+  ]
+}
