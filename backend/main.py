@@ -7,10 +7,6 @@ from __future__ import annotations
 
 import io
 import os
-from dotenv import load_dotenv
-
-# Загружаем переменные из файла .env
-load_dotenv()
 
 import datetime
 import json
@@ -35,8 +31,19 @@ from flask_limiter.util import get_remote_address
 from werkzeug.utils import secure_filename
 from PIL import Image
 
-from config import config
-from product_model import (
+from .config import (
+    BACKEND_DIR,
+    ENV_FILE,
+    PROJECT_ROOT,
+    config,
+    get_app_base_url,
+    get_database_path,
+    get_frontend_root,
+    get_products_path,
+    get_uploads_dir,
+    load_project_dotenv,
+)
+from .product_model import (
     Product,
     deduct_piece_stock_for_cart,
     normalize_stock_quantity,
@@ -219,12 +226,13 @@ COURIER_ROUTE_VIEW_STATUSES = frozenset(
     }
 )
 
-_backend_dir = Path(__file__).resolve().parent
-db_path = (_backend_dir / "shop_database.db").resolve()
-products_catalog_path = (_backend_dir / "products.json").resolve()
+_backend_dir = BACKEND_DIR
+db_path = get_database_path()
+products_catalog_path = get_products_path()
 
 
 def init_db() -> None:
+    db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     cursor.execute(
@@ -460,9 +468,6 @@ def sync_products_table_from_catalog() -> None:
         conn.commit()
     finally:
         conn.close()
-
-
-init_db()
 
 
 def _parse_order_items_field(items_raw: str | None) -> tuple[list, dict]:
@@ -4177,6 +4182,10 @@ def inject_inline_initial_products(html: str, products_path: Path | None) -> str
 def render_index_html(frontend_root: Path, products_path: Path | None = None) -> str:
     """Подставляет runtime-конфиг (GOOGLE_MAPS_API_KEY) и inline-каталог в index.html."""
     index_path = (frontend_root / "index.html").resolve()
+    if not index_path.is_file():
+        raise FileNotFoundError(
+            f"Не найден {index_path} (frontend_root={frontend_root}, cwd={Path.cwd()})"
+        )
     html = index_path.read_text(encoding="utf-8")
     html = inject_inline_initial_products(html, products_path)
     html = inject_runtime_public_config(html)
@@ -4209,9 +4218,19 @@ def create_app(
     uploads_dir.mkdir(parents=True, exist_ok=True)
 
     app = Flask(__name__)
-    public_url_env = os.getenv("PUBLIC_URL", "").strip().rstrip("/")
-    if public_url_env:
-        app.config["PUBLIC_URL"] = public_url_env
+
+    @app.get("/health")
+    def health_check():
+        return {"status": "ok", "service": "halal-shop"}
+
+    @app.get("/api/health")
+    def api_health():
+        return {"status": "ok"}
+
+    app.config["PUBLIC_URL"] = get_app_base_url()
+    app.config["FRONTEND_ROOT"] = str(frontend_root)
+    app.config["UPLOADS_DIR"] = str(uploads_dir)
+    app.config["DATABASE_PATH"] = str(db_path)
     cache = Cache(app, config={"CACHE_TYPE": "SimpleCache"})
 
     def _products_list_cache_key(*args, **kwargs) -> str:
@@ -6336,20 +6355,32 @@ def create_app(
 
 
 def _project_paths() -> tuple[Path, Path, Path, Path, Path]:
-    backend_dir = Path(__file__).resolve().parent
-    repo_root = backend_dir.parent
-    frontend_root = (repo_root / "frontend").resolve()
-    uploads_dir = (frontend_root / "uploads").resolve()
-    products_path = (backend_dir / "products.json").resolve()
-    sqlite_db_path = (backend_dir / "shop_database.db").resolve()
-    return frontend_root, uploads_dir, products_path, sqlite_db_path, backend_dir
+    frontend_root = get_frontend_root()
+    uploads_dir = get_uploads_dir()
+    products_path = get_products_path()
+    sqlite_db_path = get_database_path()
+    return frontend_root, uploads_dir, products_path, sqlite_db_path, BACKEND_DIR
 
 
 def create_application() -> Flask:
-    """WSGI-приложение для Gunicorn / Render (main:app)."""
+    """WSGI-приложение для Gunicorn / Render (backend.main:app)."""
+    load_project_dotenv()
+    global db_path, products_catalog_path
+
     frontend_root, uploads_dir, products_path, sqlite_db_path, _ = _project_paths()
-    if not frontend_root.is_dir():
-        raise RuntimeError(f"Не найдена папка фронтенда: {frontend_root}")
+    db_path = sqlite_db_path.resolve()
+    products_catalog_path = products_path.resolve()
+
+    uploads_dir.mkdir(parents=True, exist_ok=True)
+    sqlite_db_path.parent.mkdir(parents=True, exist_ok=True)
+
+    index_file = frontend_root / "index.html"
+    if not index_file.is_file():
+        raise RuntimeError(
+            "Не найден frontend/index.html. "
+            f"frontend_root={frontend_root}, project_root={PROJECT_ROOT}, "
+            f"cwd={Path.cwd()}, __file__={Path(__file__).resolve()}"
+        )
 
     application = create_app(
         frontend_root,
@@ -6358,9 +6389,8 @@ def create_application() -> Flask:
         config.ADMIN_ID,
         sqlite_db_path,
     )
-    public_url = os.getenv("PUBLIC_URL", "").strip().rstrip("/")
-    if public_url:
-        application.config["PUBLIC_URL"] = public_url
+    application.config["PUBLIC_URL"] = get_app_base_url()
+    init_db()
     return application
 
 
