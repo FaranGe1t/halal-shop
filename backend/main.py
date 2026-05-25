@@ -37,7 +37,6 @@ from werkzeug.utils import secure_filename
 from PIL import Image
 
 from .config import (
-    BACKEND_DIR,
     DATABASE_PATH,
     ENV_FILE,
     PROJECT_ROOT,
@@ -233,7 +232,7 @@ COURIER_ROUTE_VIEW_STATUSES = frozenset(
     }
 )
 
-_backend_dir = BACKEND_DIR
+_backend_dir = Path(__file__).resolve().parent
 db_path = DATABASE_PATH
 products_catalog_path = get_products_path()
 
@@ -6366,7 +6365,8 @@ def _project_paths() -> tuple[Path, Path, Path, Path, Path]:
     uploads_dir = get_uploads_dir()
     products_path = get_products_path()
     sqlite_db_path = get_database_path()
-    return frontend_root, uploads_dir, products_path, sqlite_db_path, BACKEND_DIR
+    backend_dir = Path(__file__).resolve().parent
+    return frontend_root, uploads_dir, products_path, sqlite_db_path, backend_dir
 
 
 def create_application() -> Flask:
