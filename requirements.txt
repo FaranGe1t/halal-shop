@@ -8,4 +8,6 @@ pyTelegramBotAPI>=4.14,<5
 python-dotenv>=1.0,<2
 requests>=2.31,<3
 Pillow>=10,<12
+cloudinary>=1.36,<2
 gunicorn>=21.0,<22
+"cloudinary>=1.36.0" 

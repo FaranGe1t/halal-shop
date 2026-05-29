@@ -57,6 +57,13 @@ from .product_model import (
     product_is_weight_item,
     sync_product_stock_fields,
 )
+from .cloudinary_upload import (
+    init_cloudinary,
+    upload_category_image,
+    upload_product_image,
+)
+
+init_cloudinary()
 
 _products_catalog_cache_invalidate = None
 
@@ -4363,17 +4370,15 @@ def create_app(
         max_width: int = 400,
         final_filename: str | None = None,
     ) -> str | None:
+        """Сохраняет изображение в Cloudinary вместо локальной папки."""
         if file_storage is None or file_storage.filename in ("", None):
             return None
 
-        return optimize_and_save_image(
-            file_storage,
-            uploads_dir,
-            prefix,
-            max_width=max_width,
-            quality=70,
-            final_filename=final_filename,
-        )
+        if prefix == "category":
+            category_id = final_filename or f"cat_{int(time.time() * 1000)}"
+            return upload_category_image(file_storage, category_id)
+        product_id = final_filename or f"prod_{int(time.time() * 1000)}"
+        return upload_product_image(file_storage, product_id)
 
     def _load_document_from_disk() -> dict:
         if not products_path.is_file():
