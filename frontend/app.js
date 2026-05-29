@@ -1607,25 +1607,16 @@ function syncActiveCategoryFilterFromCatalogDom() {
   const sections = container.querySelectorAll(
     ".catalog-section[data-category-id]"
   );
-  if (!sections.length) return;
-
   if (sections.length === 1) {
     const only = sections[0];
-    if (only.querySelector(".product-card[data-product-id]")) {
+    if (only.querySelector(".product-card")) {
       const id = only.getAttribute("data-category-id");
-      if (id != null && String(id) !== "") {
-        if (String(ACTIVE_CATEGORY_FILTER) !== String(id)) {
-          ACTIVE_CATEGORY_FILTER = id;
-          invalidateCategoryProductsCache();
-        }
+      if (id && String(ACTIVE_CATEGORY_FILTER) !== String(id)) {
+        console.log("Устанавливаем фильтр категории:", id);
+        ACTIVE_CATEGORY_FILTER = id;
+        invalidateCategoryProductsCache();
       }
     }
-    return;
-  }
-
-  if (ACTIVE_CATEGORY_FILTER != null) {
-    ACTIVE_CATEGORY_FILTER = null;
-    invalidateCategoryProductsCache();
   }
 }
 
@@ -2168,11 +2159,15 @@ function renderProductCatalog(options = {}) {
       productsAll
     );
     if (!renderableCardCount && preserveExistingCards) {
-      console.warn(
-        "[catalog] 0 карточек для фильтра/категорий — сохраняем DOM на экране"
+      const existingCards = document.querySelectorAll(
+        ".product-card[data-product-id]"
       );
-      syncActiveCategoryFilterFromCatalogDom();
-      return;
+      if (existingCards.length > 0) {
+        console.log("[catalog] Карточки есть на экране, сохраняем DOM");
+        syncActiveCategoryFilterFromCatalogDom();
+        return;
+      }
+      console.log("[catalog] Нет карточек на экране, показываем пустую витрину");
     }
 
     let catalogProductIndex = 0;
@@ -3752,6 +3747,14 @@ function notifyCartLineChanged(productId, options = {}) {
       }
     }
   });
+
+  setTimeout(() => {
+    const container = document.getElementById("catalog-container");
+    if (container && !container.querySelector(".product-card")) {
+      console.log("🔄 Восстанавливаем витрину");
+      renderProductCatalog({ force: true });
+    }
+  }, 50);
 }
 
 /** Короткая блокировка: только счётчики корзины, без блокировки витрины. */
