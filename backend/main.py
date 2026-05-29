@@ -52,7 +52,10 @@ from .config import (
 from .product_model import (
     Product,
     deduct_piece_stock_for_cart,
+    normalize_discount_value,
+    normalize_products_payload,
     normalize_stock_quantity,
+    normalize_unit_type,
     product_is_in_stock,
     product_is_weight_item,
     sync_product_stock_fields,
@@ -60,6 +63,16 @@ from .product_model import (
 from .cloudinary_upload import (
     upload_category_image,
     upload_product_image,
+)
+from .db_products import (
+    delete_category_from_db,
+    delete_product_from_db,
+    load_categories_from_db,
+    load_products_from_db,
+    migrate_json_to_db,
+    persist_products_document_to_db,
+    save_category_to_db,
+    save_product_to_db,
 )
 
 _products_catalog_cache_invalidate = None
@@ -71,12 +84,10 @@ def register_products_catalog_cache_invalidate(callback) -> None:
 
 
 def persist_products_document(document: dict) -> None:
-    normalized = normalize_products_payload(document)
-    products_catalog_path.parent.mkdir(parents=True, exist_ok=True)
-    products_catalog_path.write_text(
-        json.dumps(normalized, ensure_ascii=False, indent=2),
-        encoding=JSON_CHARSET,
-    )
+    """Сохраняет каталог в БД (вместо JSON)."""
+    from .db_products import persist_products_document_to_db
+
+    persist_products_document_to_db(document)
     if _products_catalog_cache_invalidate is not None:
         _products_catalog_cache_invalidate()
 
@@ -309,12 +320,56 @@ def init_db() -> None:
     )
     cursor.execute(
         """
-        CREATE TABLE IF NOT EXISTS products (
+        CREATE TABLE IF NOT EXISTS categories (
             id TEXT PRIMARY KEY,
-            price REAL NOT NULL
+            title TEXT,
+            image TEXT
         )
         """
     )
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS products (
+            id TEXT PRIMARY KEY,
+            category_id TEXT,
+            name TEXT,
+            price REAL,
+            image TEXT,
+            in_stock INTEGER DEFAULT 1,
+            unit_type TEXT DEFAULT 'pcs',
+            price_per_unit TEXT DEFAULT 'pcs',
+            discount INTEGER DEFAULT 0,
+            is_weight_item INTEGER DEFAULT 0,
+            stock_quantity REAL DEFAULT 0
+        )
+        """
+    )
+
+    cursor.execute("PRAGMA table_info(products)")
+    product_columns = {row[1] for row in cursor.fetchall()}
+    for col_name, col_def in (
+        ("category_id", "TEXT"),
+        ("name", "TEXT"),
+        ("image", "TEXT"),
+        ("in_stock", "INTEGER DEFAULT 1"),
+        ("unit_type", "TEXT DEFAULT 'pcs'"),
+        ("price_per_unit", "TEXT DEFAULT 'pcs'"),
+        ("discount", "INTEGER DEFAULT 0"),
+        ("is_weight_item", "INTEGER DEFAULT 0"),
+        ("stock_quantity", "REAL DEFAULT 0"),
+    ):
+        if col_name not in product_columns:
+            cursor.execute(
+                f"ALTER TABLE products ADD COLUMN {col_name} {col_def}"
+            )
+
+    conn.commit()
+
+    # Перенос данных из JSON в БД (одноразово)
+    try:
+        migrate_json_to_db()
+    except Exception as e:
+        print(f"Миграция JSON в БД: {e}")
 
     promo_json_path = _backend_dir / "promocodes.json"
     if promo_json_path.is_file():
@@ -354,37 +409,6 @@ def init_db() -> None:
             print("🎟️ Промокоды из promocodes.json перенесены в SQLite")
         except Exception as promo_migrate_err:
             print(f"Ошибка миграции промокодов: {promo_migrate_err}")
-
-    if products_catalog_path.is_file():
-        try:
-            raw_catalog = json.loads(
-                products_catalog_path.read_text(encoding=JSON_CHARSET)
-            )
-            catalog_products = (
-                raw_catalog.get("products", [])
-                if isinstance(raw_catalog, dict)
-                else []
-            )
-            if isinstance(catalog_products, list):
-                for prod in catalog_products:
-                    if not isinstance(prod, dict):
-                        continue
-                    pid = str(prod.get("id") or "").strip()
-                    if not pid:
-                        continue
-                    try:
-                        price_val = float(prod.get("price", 0))
-                    except (TypeError, ValueError):
-                        price_val = 0.0
-                    cursor.execute(
-                        """
-                        INSERT INTO products (id, price) VALUES (?, ?)
-                        ON CONFLICT(id) DO UPDATE SET price = excluded.price
-                        """,
-                        (pid, price_val),
-                    )
-        except (OSError, json.JSONDecodeError) as catalog_sync_err:
-            print(f"Ошибка синхронизации products в SQLite: {catalog_sync_err}")
 
     conn.commit()
 
@@ -1366,19 +1390,6 @@ def extract_delivery_address(data: dict, order_text: str) -> str:
     return match.group(1).strip() if match else ""
 
 
-def normalize_discount_value(raw) -> int:
-    try:
-        value = int(raw)
-    except (TypeError, ValueError):
-        value = 0
-    return max(0, min(99, value))
-
-
-def normalize_unit_type(raw) -> str:
-    value = str(raw or "pcs").strip().lower()
-    return "weight" if value == "weight" else "pcs"
-
-
 def is_weight_product(product: dict) -> bool:
     return normalize_unit_type(product.get("unit_type")) == "weight"
 
@@ -1440,17 +1451,11 @@ def cart_line_amount(
 
 
 def load_products_document() -> dict:
-    path = products_catalog_path
-    if not path.is_file():
-        return {"categories": [], "products": []}
-    try:
-        text = path.read_text(encoding=JSON_CHARSET).strip()
-        if not text:
-            return {"categories": [], "products": []}
-        raw_obj = json.loads(text)
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
-        return {"categories": [], "products": []}
-    return normalize_products_payload(raw_obj)
+    """Загружает каталог из БД."""
+    return {
+        "categories": load_categories_from_db(),
+        "products": load_products_from_db(),
+    }
 
 
 def normalize_promo_code(code: str) -> str:
@@ -3804,42 +3809,6 @@ def apply_dnipro_delivery_to_order(
     return updated_order, receipt_block, None, lat, lon
 
 
-def normalize_product(product: object) -> dict:
-    if not isinstance(product, dict):
-        return {}
-    out = dict(product)
-    out["discount"] = normalize_discount_value(out.get("discount", 0))
-    out["unit_type"] = normalize_unit_type(out.get("unit_type", "pcs"))
-    if out["unit_type"] == "weight":
-        out["is_weight_item"] = True
-        if str(out.get("price_per_unit", "")).strip().lower() == "kg":
-            try:
-                out["price"] = round(float(out.get("price") or 0) / 10.0, 2)
-            except (TypeError, ValueError):
-                pass
-        out["price_per_unit"] = "100g"
-    else:
-        out["is_weight_item"] = False
-        out["price_per_unit"] = "pcs"
-    return sync_product_stock_fields(out)
-
-
-def normalize_products_payload(data: object) -> dict:
-    if not isinstance(data, dict):
-        return {"categories": [], "products": []}
-    cats = data.get("categories")
-    prods = data.get("products")
-    products: list[dict] = []
-    if isinstance(prods, list):
-        for item in prods:
-            if isinstance(item, dict):
-                products.append(normalize_product(item))
-    return {
-        "categories": cats if isinstance(cats, list) else [],
-        "products": products,
-    }
-
-
 def deliver_order_notifications(
     bot: telebot.TeleBot,
     admin_id: str,
@@ -4169,22 +4138,14 @@ def inject_runtime_public_config(html: str) -> str:
     return html.replace("<head>", f"<head>\n{script}\n", 1)
 
 
-def inject_inline_initial_products(html: str, products_path: Path | None) -> str:
-    """Встраивает products.json в HTML: window.__INITIAL_PRODUCTS__ = {...}."""
+def inject_inline_initial_products(html: str, products_path: Path | None = None) -> str:
+    """Встраивает каталог из БД в HTML."""
     if _INLINE_INITIAL_PRODUCTS_MARKER not in html:
         return html
 
-    payload = "null"
-    if products_path is not None and products_path.is_file():
-        try:
-            text = products_path.read_text(encoding=JSON_CHARSET).strip()
-            if text:
-                raw_obj = json.loads(text)
-                document = normalize_products_payload(raw_obj)
-                payload = json.dumps(document, ensure_ascii=False)
-                payload = payload.replace("</", "<\\/")
-        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
-            payload = "null"
+    document = load_products_document()
+    payload = json.dumps(document, ensure_ascii=False)
+    payload = payload.replace("</", "<\\/")
 
     script = f"<script>window.__INITIAL_PRODUCTS__={payload};</script>"
     return html.replace(_INLINE_INITIAL_PRODUCTS_MARKER, script, 1)
@@ -4345,18 +4306,12 @@ def create_app(
     )
     def api_products():
         """
-        Всегда 200 и валидная структура { categories, products }.
-        Нет файла / пустой файл / битый JSON — отдаём пустые массивы.
+        Всегда 200 и валидная структура { categories, products } из SQLite.
         """
-        document: dict = {"categories": [], "products": []}
-        if products_path.is_file():
-            try:
-                text = products_path.read_text(encoding=JSON_CHARSET).strip()
-                if text:
-                    raw_obj = json.loads(text)
-                    document = normalize_products_payload(raw_obj)
-            except (OSError, UnicodeDecodeError, json.JSONDecodeError):
-                document = {"categories": [], "products": []}
+        try:
+            document = load_products_document()
+        except Exception:
+            document = {"categories": [], "products": []}
 
         resp = app.response_class(
             response=json.dumps(document, ensure_ascii=False, indent=2),
@@ -4383,16 +4338,8 @@ def create_app(
         return upload_product_image(file_storage, product_id)
 
     def _load_document_from_disk() -> dict:
-        if not products_path.is_file():
-            return {"categories": [], "products": []}
-        try:
-            text = products_path.read_text(encoding=JSON_CHARSET).strip()
-            if not text:
-                return {"categories": [], "products": []}
-            raw_obj = json.loads(text)
-        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
-            return {"categories": [], "products": []}
-        return normalize_products_payload(raw_obj)
+        """Загружает каталог из БД (вместо JSON)."""
+        return load_products_document()
 
     def _persist_document(document: dict) -> None:
         persist_products_document(document)
@@ -4582,11 +4529,8 @@ def create_app(
         if files_map:
             _apply_uploads_to_document(document, files_map)
 
-        try:
-            _persist_document(document)
-        except OSError as exc:
-            return jsonify({"ok": False, "error": str(exc)}), 500
-
+        persist_products_document_to_db(document)
+        cache.delete("products_list")
         return jsonify({"ok": True})
 
     @app.post("/api/admin/toggle_stock")

@@ -3,25 +3,113 @@
 
 
 ================================================================================
+ФАЙЛ: requirements.txt
+================================
+
+Flask>=3.0,<4
+Werkzeug>=3.0,<4
+Flask-Caching>=2.3,<3
+cachelib>=0.14,<1
+Flask-Limiter>=3.8,<5
+limits>=5.8,<6
+pyTelegramBotAPI>=4.14,<5
+python-dotenv>=1.0,<2
+requests>=2.31,<3
+Pillow>=10,<12
+gunicorn>=21.0,<22
+
+
+
+================================================================================
+ФАЙЛ: run.py
+======================
+
+import sys
+import os
+
+# Добавляем текущую папку в путь
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+# Простой импорт без относительных путей
+from backend import main
+
+app = main.app
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host="0.0.0.0", port=port)
+
+
+
+================================================================================
 ФАЙЛ: backend\config.py
 =================================
 
 import os
+from pathlib import Path
 
-from dotenv import load_dotenv
+BACKEND_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = BACKEND_DIR.parent
 
-load_dotenv()
+# Путь к базе данных
+DATABASE_PATH = BACKEND_DIR / "shop_database.db"
 
-
-class BotConfig:
-    BOT_TOKEN: str = os.getenv("BOT_TOKEN", "").strip()
-    ADMIN_ID: str = os.getenv("ADMIN_ID", "").strip()
-    GOOGLE_MAPS_API_KEY: str = (
-        os.getenv("GOOGLE_MAPS_API_KEY", os.getenv("GOOGLE_API_KEY", "")).strip()
-    )
+# URL для Telegram Mini App (задаётся через переменную окружения)
+PUBLIC_URL = os.getenv("PUBLIC_URL", "https://halal-shop-1.onrender.com")
 
 
-config = BotConfig()
+def get_app_base_url() -> str:
+    return PUBLIC_URL.rstrip("/")
+
+
+def load_project_dotenv() -> None:
+    # Для Render эта функция не нужна
+    pass
+
+
+# Конфиг для бота
+class Config:
+    BOT_TOKEN = os.getenv("BOT_TOKEN", "")
+    ADMIN_ID = os.getenv("ADMIN_ID", "")
+    GOOGLE_MAPS_API_KEY = os.getenv("GOOGLE_MAPS_API_KEY", "")
+    HOST = "0.0.0.0"
+    PORT = int(os.getenv("PORT", "8080"))
+
+
+config = Config()
+
+# Дополнительные переменные, которые могут понадобиться
+ENV_FILE = None
+
+
+def get_database_path() -> Path:
+    custom = os.getenv("DATABASE_PATH", "").strip()
+    if custom:
+        return Path(custom).expanduser().resolve()
+    return DATABASE_PATH.resolve()
+
+
+def get_frontend_root() -> Path:
+    custom = os.getenv("FRONTEND_DIR", "").strip()
+    if custom:
+        return Path(custom).expanduser().resolve()
+    return (PROJECT_ROOT / "frontend").resolve()
+
+
+def get_uploads_dir() -> Path:
+    custom = os.getenv("UPLOADS_DIR", "").strip()
+    if custom:
+        return Path(custom).expanduser().resolve()
+    if os.getenv("RENDER", "").strip().lower() in ("true", "1", "yes"):
+        return (BACKEND_DIR / "uploads").resolve()
+    return (get_frontend_root() / "uploads").resolve()
+
+
+def get_products_path() -> Path:
+    custom = os.getenv("PRODUCTS_JSON", "").strip()
+    if custom:
+        return Path(custom).expanduser().resolve()
+    return (BACKEND_DIR / "products.json").resolve()
 
 
 
@@ -30,17 +118,19 @@ config = BotConfig()
 ===============================
 
 """
-Халяль Маркет — Flask: статика frontend, загрузки изображений, API каталога, бот + ngrok.
+Халяль Маркет — Flask: статика frontend, загрузки изображений, API каталога, Telegram-бот.
+Деплой: Gunicorn (main:app), PUBLIC_URL из переменных окружения.
 """
 
 from __future__ import annotations
 
-import io
+import sys
 import os
-from dotenv import load_dotenv
 
-# Загружаем переменные из файла .env
-load_dotenv()
+# Добавляем корневую папку в путь
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import io
 
 import datetime
 import json
@@ -62,12 +152,23 @@ from flask import Flask, Response, abort, jsonify, redirect, request, send_from_
 from flask_caching import Cache
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
-from pyngrok import ngrok
 from werkzeug.utils import secure_filename
 from PIL import Image
 
-from config import config
-from product_model import (
+from .config import (
+    DATABASE_PATH,
+    ENV_FILE,
+    PROJECT_ROOT,
+    PUBLIC_URL,
+    config,
+    get_app_base_url,
+    get_database_path,
+    get_frontend_root,
+    get_products_path,
+    get_uploads_dir,
+    load_project_dotenv,
+)
+from .product_model import (
     Product,
     deduct_piece_stock_for_cart,
     normalize_stock_quantity,
@@ -251,11 +352,12 @@ COURIER_ROUTE_VIEW_STATUSES = frozenset(
 )
 
 _backend_dir = Path(__file__).resolve().parent
-db_path = (_backend_dir / "shop_database.db").resolve()
-products_catalog_path = (_backend_dir / "products.json").resolve()
+db_path = DATABASE_PATH
+products_catalog_path = get_products_path()
 
 
 def init_db() -> None:
+    db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     cursor.execute(
@@ -491,9 +593,6 @@ def sync_products_table_from_catalog() -> None:
         conn.commit()
     finally:
         conn.close()
-
-
-init_db()
 
 
 def _parse_order_items_field(items_raw: str | None) -> tuple[list, dict]:
@@ -2249,29 +2348,30 @@ def get_courier_poekhali_pending_order(courier_id: str) -> dict | None:
         conn.close()
 
 
-def save_order_courier_coordinates(order_id: str, lat: float, lon: float) -> bool:
-    """
-    Жёстко перезаписывает фактические координаты курьера в JSON items заказа (commit)
-    и в оперативном кэше COURIER_POSITIONS (вместо стартовых координат магазина).
-    """
-    oid = str(order_id or "").strip()
-    if not oid:
-        return False
+COURIER_COORDS_DB_MAX_RETRIES = 3
+COURIER_COORDS_DB_RETRY_BASE_SEC = 0.2
 
-    lat_f = float(lat)
-    lon_f = float(lon)
-    updated_at = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    conn = sqlite3.connect(db_path)
-    courier_id = None
+def _commit_order_courier_coordinates_tx(
+    oid: str,
+    lat_f: float,
+    lon_f: float,
+    updated_at: str,
+) -> str | None:
+    """
+    Одна транзакция SQLite: courier_lat/lon в items.
+    Возвращает courier_id (может быть ""), None если заказ не найден.
+    """
+    conn = sqlite3.connect(db_path, timeout=15.0)
     try:
+        conn.execute("PRAGMA busy_timeout = 5000")
         with conn:
             row = conn.execute(
                 "SELECT items, courier_id FROM orders WHERE id = ?",
                 (oid,),
             ).fetchone()
             if not row:
-                return False
+                return None
 
             items_raw, courier_id = row[0], row[1]
             try:
@@ -2293,11 +2393,61 @@ def save_order_courier_coordinates(order_id: str, lat: float, lon: float) -> boo
                 (json.dumps(blob, ensure_ascii=False), oid),
             )
             if cur.rowcount < 1:
-                return False
+                raise sqlite3.DatabaseError(
+                    f"UPDATE orders items: 0 rows for order {oid}"
+                )
+        return str(courier_id) if courier_id not in (None, "") else ""
     finally:
         conn.close()
 
-    if courier_id not in (None, ""):
+
+def save_order_courier_coordinates(order_id: str, lat: float, lon: float) -> bool:
+    """
+    Жёстко перезаписывает фактические координаты курьера в JSON items заказа (commit)
+    и в оперативном кэше COURIER_POSITIONS. До 3 попыток при ошибках SQLite.
+    """
+    oid = str(order_id or "").strip()
+    if not oid:
+        return False
+
+    try:
+        lat_f = float(lat)
+        lon_f = float(lon)
+    except (TypeError, ValueError):
+        return False
+
+    updated_at = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    courier_id: str | None = None
+    last_error: Exception | None = None
+
+    for attempt in range(1, COURIER_COORDS_DB_MAX_RETRIES + 1):
+        try:
+            courier_id = _commit_order_courier_coordinates_tx(
+                oid, lat_f, lon_f, updated_at
+            )
+            if courier_id is None:
+                print(
+                    f"save_order_courier_coordinates: заказ {oid} не найден",
+                    file=sys.stderr,
+                )
+                return False
+            last_error = None
+            break
+        except (sqlite3.OperationalError, sqlite3.DatabaseError, OSError) as db_err:
+            last_error = db_err
+            print(
+                f"save_order_courier_coordinates: попытка {attempt}/"
+                f"{COURIER_COORDS_DB_MAX_RETRIES} заказ {oid}: {db_err}",
+                file=sys.stderr,
+            )
+            if attempt < COURIER_COORDS_DB_MAX_RETRIES:
+                delay = COURIER_COORDS_DB_RETRY_BASE_SEC * (2 ** (attempt - 1))
+                time.sleep(delay)
+
+    if last_error is not None:
+        return False
+
+    if courier_id:
         try:
             update_courier_position(int(courier_id), lat_f, lon_f)
         except (TypeError, ValueError) as pos_err:
@@ -2567,21 +2717,9 @@ def build_courier_fast_go_webapp_url(
     public_url: str | None = None,
     client_address: str | None = None,
 ) -> str | None:
-    """
-    Mini App: быстрый старт (#/?courier_fast_go=1&order_id=) — без серверного redirect.
-    """
-    base = (public_url or resolve_public_base_url()).strip().rstrip("/")
-    if not base:
-        return None
-    oid = quote(str(order_id).strip(), safe="")
-    url = f"{base}/#/?courier_fast_go=1&order_id={oid}"
-    addr = str(client_address or "").strip()
-    if not addr:
-        order = get_order_from_db(str(order_id).strip())
-        addr = str((order or {}).get("address") or "").strip()
-    if addr:
-        url += f"&address={quote(addr, safe='')}"
-    return url
+    """Обратная совместимость: тот же URL, что у inline-кнопки «Поехали» (без Mini App)."""
+    _ = client_address
+    return build_courier_go_button_url(order_id, public_url)
 
 
 def build_courier_fast_start_webapp_url(
@@ -2589,8 +2727,8 @@ def build_courier_fast_start_webapp_url(
     public_url: str | None = None,
     client_address: str | None = None,
 ) -> str | None:
-    """Обратная совместимость → courier_fast_go WebApp URL."""
-    return build_courier_fast_go_webapp_url(order_id, public_url, client_address)
+    """Обратная совместимость → GET /api/courier/go/<order_id>."""
+    return build_courier_go_button_url(order_id, public_url)
 
 
 def build_courier_after_accept_keyboard(
@@ -2598,25 +2736,9 @@ def build_courier_after_accept_keyboard(
     public_url: str | None = None,
     client_address: str | None = None,
 ) -> types.InlineKeyboardMarkup:
-    """После принятия заказа: WebApp courier_fast_go + «Выполнено»."""
-    keyboard = types.InlineKeyboardMarkup()
-    webapp_url = build_courier_fast_go_webapp_url(
-        order_id, public_url, client_address=client_address
-    )
-    if webapp_url:
-        keyboard.add(
-            types.InlineKeyboardButton(
-                text="🚀 ПОЕХАЛИ! (Навигатор + GPS)",
-                web_app=types.WebAppInfo(url=webapp_url),
-            )
-        )
-    keyboard.add(
-        types.InlineKeyboardButton(
-            text="📦 Выполнено",
-            callback_data=f"complete_order_{order_id}",
-        )
-    )
-    return keyboard
+    """После принятия заказа: «Поехали» (навигатор) + «Выполнено»."""
+    _ = client_address
+    return build_courier_go_inline_keyboard(order_id, public_url)
 
 
 def build_track_order_keyboard(
@@ -2633,6 +2755,68 @@ def build_track_order_keyboard(
         )
     )
     return keyboard
+
+
+def notify_client_order_submitted(
+    bot,
+    user_chat_id,
+    order_id: str,
+    public_url: str,
+    *,
+    client_lat: float | None = None,
+    client_lon: float | None = None,
+    initial_status: str = "",
+) -> None:
+    """Сообщение клиенту с кнопкой Mini App — якорь для возврата к заказу."""
+    if bot is None or user_chat_id in (None, ""):
+        return
+
+    try:
+        chat_id = int(user_chat_id)
+    except (TypeError, ValueError):
+        return
+
+    base = str(public_url or resolve_public_base_url()).strip().rstrip("/")
+    if not base:
+        print(
+            "notify_client_order_submitted: PUBLIC_URL не задан — сообщение клиенту пропущено",
+            file=sys.stderr,
+        )
+        return
+
+    lat = (
+        float(client_lat)
+        if client_lat is not None
+        else SHOP_LATITUDE
+    )
+    lon = (
+        float(client_lon)
+        if client_lon is not None
+        else SHOP_LONGITUDE
+    )
+    markup = build_track_order_keyboard(base, lat, lon, str(order_id))
+
+    status_lower = str(initial_status or "").lower()
+    status_hint = ""
+    if status_lower == "pending_weight_verification":
+        status_hint = (
+            "\n\n⚖️ В заказе есть весовые товары — ожидаем подтверждение веса."
+        )
+    elif status_lower == "awaiting_payment":
+        status_hint = "\n\n💳 Ожидается подтверждение оплаты."
+
+    try:
+        bot.send_message(
+            chat_id,
+            f"✅ Заказ №{order_id} оформлен!{status_hint}\n\n"
+            "Нажмите кнопку ниже, чтобы отслеживать статус заказа.",
+            reply_markup=markup,
+        )
+    except Exception as client_err:
+        print(
+            f"Не удалось отправить клиенту уведомление о заказе №{order_id}: {client_err}",
+            file=sys.stderr,
+        )
 
 
 def escape_html(text: str) -> str:
@@ -2701,6 +2885,47 @@ def build_google_maps_route_url(
     return url
 
 
+def build_google_maps_navigate_to_destination_url(
+    dest_lat: float,
+    dest_lon: float,
+    *,
+    navigate: bool = True,
+) -> str:
+    """
+    Маршрут до клиента без origin — Google Maps берёт текущую GPS телефона курьера.
+    """
+    url = (
+        "https://www.google.com/maps/dir/?api=1"
+        f"&destination={dest_lat},{dest_lon}"
+        "&travelmode=driving"
+    )
+    if navigate:
+        url += "&dir_action=navigate"
+    return url
+
+
+def build_google_maps_navigate_to_address_url(
+    address: str,
+    *,
+    origin_lat: float | None = None,
+    origin_lon: float | None = None,
+    navigate: bool = True,
+) -> str:
+    """Маршрут до адреса; origin опционален (иначе — текущая GPS телефона)."""
+    dest = quote(str(address).strip())
+    url = f"https://www.google.com/maps/dir/?api=1&destination={dest}&travelmode=driving"
+    if origin_lat is not None and origin_lon is not None:
+        url = (
+            "https://www.google.com/maps/dir/?api=1"
+            f"&origin={origin_lat},{origin_lon}"
+            f"&destination={dest}"
+            "&travelmode=driving"
+        )
+    if navigate:
+        url += "&dir_action=navigate"
+    return url
+
+
 def resolve_courier_route_origin(
     order_id: str | None = None,
     order: dict | None = None,
@@ -2754,32 +2979,62 @@ def resolve_courier_route_origin(
     return SHOP_LATITUDE, SHOP_LONGITUDE
 
 
-def resolve_courier_navigator_url_for_order(order_id: str) -> str | None:
-    """Маршрут Google Maps: от GPS курьера до клиента."""
-    client_lat, client_lon = resolve_order_client_coordinates(order_id)
-    if client_lat is None or client_lon is None:
+def resolve_courier_navigator_url_for_order(
+    order_id: str,
+    *,
+    courier_lat: float | None = None,
+    courier_lon: float | None = None,
+) -> str | None:
+    """Маршрут Google Maps до клиента (без точки старта «магазин»)."""
+    order = get_order_from_db(str(order_id).strip())
+    if not order:
         return None
-    origin_lat, origin_lon = resolve_courier_route_origin(order_id)
-    return build_google_maps_route_url(
-        origin_lat,
-        origin_lon,
-        client_lat,
-        client_lon,
+    return build_courier_go_maps_url(
+        order,
+        order_id,
+        courier_lat=courier_lat,
+        courier_lon=courier_lon,
     )
 
 
 def resolve_public_base_url() -> str:
-    """Базовый HTTPS-URL Mini App (ngrok / PUBLIC_URL в .env)."""
-    return str(os.environ.get("PUBLIC_URL") or "").strip().rstrip("/")
+    """Базовый HTTPS-URL Mini App (PUBLIC_URL в окружении / .env)."""
+    return os.getenv("PUBLIC_URL", "").strip().rstrip("/")
 
 
 def build_courier_go_button_url(order_id: str, public_url: str | None = None) -> str | None:
-    """URL кнопки «Поехали» → GET /api/courier/go/<order_id> (редирект в Google Maps)."""
+    """URL «Поехали» → мгновенный 302 в Google Maps (без Mini App)."""
     base = (public_url or resolve_public_base_url()).strip().rstrip("/")
     if not base:
         return None
     oid = quote(str(order_id).strip(), safe="")
-    return f"{base}/api/courier/go/{oid}"
+    return f"{base}/go/{oid}"
+
+
+def resolve_courier_navigation_origin(
+    order_id: str | None,
+    order: dict,
+    courier_id: str | None = None,
+    *,
+    prefer_lat: float | None = None,
+    prefer_lon: float | None = None,
+) -> tuple[float | None, float | None]:
+    """
+    Точка старта навигатора: только реальная GPS курьера.
+    Координаты магазина не используются.
+    """
+    lat, lon = resolve_courier_go_start_coordinates(
+        str(order_id or "").strip(),
+        order,
+        courier_id,
+        prefer_lat=prefer_lat,
+        prefer_lon=prefer_lon,
+    )
+    if lat is None or lon is None:
+        return None, None
+    if coords_near_shop(lat, lon):
+        return None, None
+    return lat, lon
 
 
 def build_courier_go_maps_url(
@@ -2789,12 +3044,16 @@ def build_courier_go_maps_url(
     courier_lat: float | None = None,
     courier_lon: float | None = None,
 ) -> str:
-    """Google Maps: маршрут от GPS курьера до клиента (fallback — магазин)."""
+    """
+    Google Maps до клиента от GPS курьера.
+    Если GPS курьера нет — маршрут без origin (телефон подставит текущую позицию).
+    """
     oid = str(order_id or order.get("id") or order.get("order_id") or "").strip()
-    origin_lat, origin_lon = resolve_courier_route_origin(
+    cid = order.get("courier_id")
+    origin_lat, origin_lon = resolve_courier_navigation_origin(
         oid or None,
         order,
-        order.get("courier_id"),
+        str(cid) if cid not in (None, "") else None,
         prefer_lat=courier_lat,
         prefer_lon=courier_lon,
     )
@@ -2803,27 +3062,33 @@ def build_courier_go_maps_url(
     )
 
     if client_lat is not None and client_lon is not None:
-        return build_google_maps_route_url(
-            origin_lat,
-            origin_lon,
-            client_lat,
-            client_lon,
-            navigate=True,
+        if origin_lat is not None and origin_lon is not None:
+            return build_google_maps_route_url(
+                origin_lat,
+                origin_lon,
+                client_lat,
+                client_lon,
+                navigate=True,
+            )
+        return build_google_maps_navigate_to_destination_url(
+            client_lat, client_lon, navigate=True
         )
 
     address = str(order.get("address") or "").strip()
     if address:
-        return (
-            "https://www.google.com/maps/dir/?api=1"
-            f"&origin={origin_lat},{origin_lon}"
-            f"&destination={quote(address)}"
-            "&travelmode=driving&dir_action=navigate"
+        return build_google_maps_navigate_to_address_url(
+            address,
+            origin_lat=origin_lat,
+            origin_lon=origin_lon,
+            navigate=True,
         )
 
-    return (
-        "https://www.google.com/maps/search/?api=1"
-        f"&query={origin_lat},{origin_lon}"
-    )
+    if origin_lat is not None and origin_lon is not None:
+        return (
+            "https://www.google.com/maps/search/?api=1"
+            f"&query={origin_lat},{origin_lon}"
+        )
+    return "https://www.google.com/maps/dir/?api=1&travelmode=driving&dir_action=navigate"
 
 
 def apply_courier_go_delivery_start(
@@ -2849,8 +3114,12 @@ def apply_courier_go_delivery_start(
         try:
             lat_f = float(courier_lat)
             lon_f = float(courier_lon)
-            save_order_courier_coordinates(oid, lat_f, lon_f)
-            if courier_id not in (None, ""):
+            if not save_order_courier_coordinates(oid, lat_f, lon_f):
+                print(
+                    f"apply_courier_go_delivery_start: GPS не сохранён для заказа {oid}",
+                    file=sys.stderr,
+                )
+            elif courier_id not in (None, ""):
                 update_courier_position(int(courier_id), lat_f, lon_f)
         except (TypeError, ValueError) as coord_err:
             print(
@@ -2859,6 +3128,125 @@ def apply_courier_go_delivery_start(
             )
 
     return record
+
+
+def resolve_courier_go_start_coordinates(
+    order_id: str,
+    order: dict,
+    courier_id: str | None,
+    *,
+    prefer_lat: float | None = None,
+    prefer_lon: float | None = None,
+) -> tuple[float | None, float | None]:
+    """GPS для старта «Поехали»: аргументы → заказ → кэш курьера."""
+    if prefer_lat is not None and prefer_lon is not None:
+        try:
+            return float(prefer_lat), float(prefer_lon)
+        except (TypeError, ValueError):
+            pass
+
+    oid = str(order_id or "").strip()
+    if oid:
+        clat, clon = resolve_order_courier_coordinates(
+            oid, str(courier_id) if courier_id not in (None, "") else None
+        )
+        if clat is not None and clon is not None:
+            return clat, clon
+
+    cid = str(courier_id or order.get("courier_id") or "").strip()
+    if cid:
+        pos = COURIER_POSITIONS.get(cid, {})
+        try:
+            mlat = pos.get("lat")
+            mlon = pos.get("lon")
+            if mlat is not None and mlon is not None:
+                return float(mlat), float(mlon)
+        except (TypeError, ValueError):
+            pass
+
+    return None, None
+
+
+def courier_go_start_delivery(
+    order_id: str,
+    *,
+    courier_id: str | None = None,
+    courier_lat: float | None = None,
+    courier_lon: float | None = None,
+    bot=None,
+    public_url: str | None = None,
+    notify_courier_hint: bool = False,
+) -> tuple[dict, str, bool]:
+    """
+    Один клик «Поехали»: delivering, GPS клиенту, уведомление клиенту, URL Google Maps.
+    Возвращает (order, maps_url, coords_saved).
+    """
+    oid = str(order_id).strip()
+    order = get_order_from_db(oid)
+    if not order:
+        raise ValueError("order_not_found")
+
+    cid = str(courier_id or order.get("courier_id") or "").strip()
+    lat, lon = resolve_courier_go_start_coordinates(
+        oid, order, cid or None, prefer_lat=courier_lat, prefer_lon=courier_lon
+    )
+    coords_saved = lat is not None and lon is not None
+
+    order = apply_courier_go_delivery_start(
+        oid,
+        order,
+        courier_lat=lat,
+        courier_lon=lon,
+    )
+
+    base = str(public_url or resolve_public_base_url() or "").strip()
+    notify_client_courier_departed(
+        bot,
+        oid,
+        base,
+        has_courier_location=coords_saved,
+    )
+    if notify_courier_hint and bot is not None and not coords_saved:
+        notify_courier_live_location_after_go(
+            bot, oid, courier_chat_id=int(cid) if cid else None
+        )
+
+    maps_url = build_courier_go_maps_url(
+        order,
+        oid,
+        courier_lat=lat,
+        courier_lon=lon,
+    )
+    return order, maps_url, coords_saved
+
+
+def build_courier_go_inline_keyboard(
+    order_id: str,
+    public_url: str | None = None,
+) -> types.InlineKeyboardMarkup:
+    """
+    «Поехали» — прямая ссылка на Google Maps (1 тап, без Mini App).
+    Старт доставки на сервере — через /go/<order_id> в том же URL (редирект).
+    """
+    keyboard = types.InlineKeyboardMarkup(row_width=1)
+    order = get_order_from_db(str(order_id).strip()) or {}
+    go_url = (
+        build_courier_go_button_url(order_id, public_url)
+        or build_courier_go_maps_url(order, order_id)
+    )
+    keyboard.add(
+        types.InlineKeyboardButton(
+            text="🚀 ПОЕХАЛИ! (Навигатор)",
+            url=go_url,
+        )
+    )
+    keyboard.add(
+        types.InlineKeyboardButton(
+            text="📦 Выполнено",
+            callback_data=f"complete_order_{order_id}",
+        )
+    )
+    return keyboard
 
 
 def try_mark_courier_departure_client_notified(order_id: str) -> bool:
@@ -2886,6 +3274,50 @@ def try_mark_courier_departure_client_notified(order_id: str) -> bool:
     finally:
         conn.close()
     return True
+
+
+def notify_courier_live_location_after_go(
+    bot,
+    order_id: str,
+    *,
+    courier_chat_id: str | int | None = None,
+) -> None:
+    """Подсказка курьеру, если авто-GPS не удалось (ручная трансляция в чат)."""
+    if bot is None:
+        return
+
+    chat_id = courier_chat_id
+    if chat_id is None:
+        order = get_order_from_db(str(order_id).strip())
+        if not order:
+            return
+        cid = order.get("courier_id")
+        if cid in (None, ""):
+            return
+        try:
+            chat_id = int(cid)
+        except (TypeError, ValueError):
+            return
+
+    try:
+        chat_id = int(chat_id)
+    except (TypeError, ValueError):
+        return
+
+    oid = str(order_id).strip()
+    try:
+        bot.send_message(
+            chat_id,
+            f"✅ Заказ №{oid} — вы в пути.\n\n"
+            "📍 Чтобы клиент видел вас на карте в реальном времени:\n"
+            "📎 (скрепка) → Геопозиция → Транслировать (на 1 час)",
+            disable_web_page_preview=True,
+        )
+    except Exception as notify_err:
+        print(
+            f"notify_courier_live_location_after_go: заказ {oid}: {notify_err}",
+            file=sys.stderr,
+        )
 
 
 def notify_client_courier_departed(
@@ -2938,30 +3370,126 @@ def notify_client_courier_departed(
         )
 
 
-def render_courier_go_geolocation_html(order_id: str) -> str:
-    """Мини-страница: GPS курьера → POST на сервер → редирект в Google Maps."""
+def render_courier_go_geolocation_html(
+    order_id: str, maps_url: str | None = None
+) -> str:
+    """
+    Лёгкая страница «Поехали» (не магазин):
+    авто-GPS → клиенту на карту → Google Maps, фоновые обновления координат.
+    """
     oid_js = json.dumps(str(order_id).strip())
+    _ = maps_url
     return f"""<!DOCTYPE html>
 <html lang="ru">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <title>Поехали</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
-body{{font-family:system-ui,sans-serif;margin:2rem;text-align:center;background:#111;color:#eee}}
-p{{line-height:1.5}}
+body{{font-family:system-ui,sans-serif;margin:2rem;text-align:center;background:#0d0d0d;color:#eee}}
+p{{line-height:1.45;font-size:15px;margin:0 0 10px}}
+small{{color:rgba(255,255,255,.45);font-size:12px}}
 </style>
 </head>
 <body>
-<p id="status">Определяем вашу геопозицию…</p>
+<p id="status">Запрашиваем геопозицию…</p>
+<small id="hint">Разрешите доступ к GPS — координаты уйдут клиенту автоматически</small>
 <script>
+(function () {{
+  if ("serviceWorker" in navigator) {{
+    navigator.serviceWorker.getRegistrations().then(function (regs) {{
+      regs.forEach(function (r) {{ r.unregister(); }});
+    }}).catch(function () {{}});
+  }}
+}})();
+
 const orderId = {oid_js};
 const postUrl = "/api/courier/go/" + encodeURIComponent(orderId);
+const updateUrl = "/api/courier/update_location";
 const statusEl = document.getElementById("status");
+const hintEl = document.getElementById("hint");
+const tg = window.Telegram && window.Telegram.WebApp;
+let gpsWatchId = null;
+let gpsIntervalId = null;
+let mapsOpened = false;
+let trackingActive = false;
+
+function courierIdFromTg() {{
+  try {{
+    const id = tg && tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.id;
+    return id != null ? String(id) : "";
+  }} catch (e) {{
+    return "";
+  }}
+}}
+
+function buildPayload(lat, lon) {{
+  const body = {{ order_id: orderId, lat: lat, lon: lon }};
+  const cid = courierIdFromTg();
+  if (cid) {{
+    body.courier_id = cid;
+    body.user_id = cid;
+  }}
+  return JSON.stringify(body);
+}}
+
+function pushLocation(lat, lon, useBeacon) {{
+  const payload = buildPayload(lat, lon);
+  if (useBeacon && navigator.sendBeacon) {{
+    try {{
+      navigator.sendBeacon(
+        updateUrl,
+        new Blob([payload], {{ type: "application/json" }})
+      );
+      return;
+    }} catch (e) {{}}
+  }}
+  fetch(updateUrl, {{
+    method: "POST",
+    headers: {{ "Content-Type": "application/json" }},
+    body: payload,
+    keepalive: true,
+  }}).catch(function () {{}});
+}}
 
 function openMaps(redirectUrl) {{
-  if (redirectUrl) window.location.replace(redirectUrl);
-  else statusEl.textContent = "Не удалось открыть навигатор.";
+  if (!redirectUrl || mapsOpened) return;
+  mapsOpened = true;
+  if (tg && typeof tg.openMapsUrl === "function") {{
+    tg.openMapsUrl(redirectUrl);
+  }} else if (tg && typeof tg.openLink === "function") {{
+    tg.openLink(redirectUrl);
+  }} else {{
+    window.location.href = redirectUrl;
+  }}
+}}
+
+function startGpsBroadcast() {{
+  if (trackingActive) return;
+  trackingActive = true;
+  hintEl.textContent = "Геопозиция передаётся клиенту автоматически";
+
+  if (navigator.geolocation) {{
+    gpsWatchId = navigator.geolocation.watchPosition(
+      function (pos) {{
+        pushLocation(pos.coords.latitude, pos.coords.longitude, document.hidden);
+      }},
+      function () {{}},
+      {{ enableHighAccuracy: true, maximumAge: 4000, timeout: 20000 }}
+    );
+  }}
+
+  gpsIntervalId = setInterval(function () {{
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      function (pos) {{
+        pushLocation(pos.coords.latitude, pos.coords.longitude, document.hidden);
+      }},
+      function () {{}},
+      {{ enableHighAccuracy: true, maximumAge: 4000, timeout: 15000 }}
+    );
+  }}, 10000);
 }}
 
 function postStart(payload) {{
@@ -2975,37 +3503,86 @@ function postStart(payload) {{
   }});
 }}
 
-function startDelivery(coords) {{
+function onCoords(coords) {{
   const body = coords
     ? {{ lat: coords.latitude, lon: coords.longitude }}
     : {{}};
+  if (coords) {{
+    pushLocation(coords.latitude, coords.longitude, false);
+    startGpsBroadcast();
+  }}
+  statusEl.textContent = "Строим маршрут и открываем карты…";
   postStart(body)
     .then(function (data) {{
-      statusEl.textContent = "Открываем Google Maps…";
+      statusEl.textContent = "Маршрут готов. Открываем Google Maps…";
       openMaps(data.redirect);
     }})
     .catch(function () {{
-      statusEl.textContent = "Ошибка связи. Повторите нажатие «Поехали» в Telegram.";
+      statusEl.textContent = "Ошибка связи. Нажмите «Поехали» ещё раз.";
     }});
 }}
 
 function onGeoError() {{
-  statusEl.textContent = "Геопозиция недоступна. Открываем навигатор без GPS…";
-  startDelivery(null);
+  statusEl.textContent = "GPS недоступен. Открываем навигатор без точки старта…";
+  onCoords(null);
 }}
 
-if (!navigator.geolocation) {{
-  onGeoError();
-}} else {{
+function requestBrowserGeo() {{
+  if (!navigator.geolocation) {{
+    onGeoError();
+    return;
+  }}
+  statusEl.textContent = "Определяем вашу геопозицию…";
   navigator.geolocation.getCurrentPosition(
-    function (pos) {{
-      statusEl.textContent = "Геопозиция получена. Запускаем доставку…";
-      startDelivery(pos.coords);
-    }},
+    function (pos) {{ onCoords(pos.coords); }},
     onGeoError,
-    {{ enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }}
+    {{ enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }}
   );
 }}
+
+function requestTelegramGeo() {{
+  const lm = tg && tg.LocationManager;
+  if (!lm || typeof lm.init !== "function") {{
+    requestBrowserGeo();
+    return;
+  }}
+  statusEl.textContent = "Запрашиваем GPS через Telegram…";
+  lm.init(function (state) {{
+    if (!state || !state.isInited) {{
+      requestBrowserGeo();
+      return;
+    }}
+    if (typeof lm.getLocation !== "function") {{
+      requestBrowserGeo();
+      return;
+    }}
+    lm.getLocation(function (loc) {{
+      if (loc && loc.latitude != null && loc.longitude != null) {{
+        onCoords({{ latitude: loc.latitude, longitude: loc.longitude }});
+      }} else {{
+        requestBrowserGeo();
+      }}
+    }});
+  }});
+}}
+
+document.addEventListener("visibilitychange", function () {{
+  if (!trackingActive || !navigator.geolocation) return;
+  navigator.geolocation.getCurrentPosition(
+    function (pos) {{
+      pushLocation(pos.coords.latitude, pos.coords.longitude, true);
+    }},
+    function () {{}},
+    {{ enableHighAccuracy: true, maximumAge: 3000, timeout: 12000 }}
+  );
+}});
+
+if (tg && typeof tg.ready === "function") {{
+  tg.ready();
+  if (typeof tg.expand === "function") tg.expand();
+}}
+
+requestTelegramGeo();
 </script>
 </body>
 </html>"""
@@ -3014,8 +3591,8 @@ if (!navigator.geolocation) {{
 def build_courier_start_delivery_webapp_url(
     order_id: str, public_url: str | None = None
 ) -> str | None:
-    """Обратная совместимость → fast_start WebApp URL."""
-    return build_courier_fast_start_webapp_url(order_id, public_url)
+    """Обратная совместимость → GET /api/courier/go/<order_id>."""
+    return build_courier_go_button_url(order_id, public_url)
 
 
 def build_google_maps_navigation_url(
@@ -3681,18 +4258,63 @@ def save_map_banner_upload(
     return resolve_map_banner_info(uploads_dir), None
 
 
+_RUNTIME_CONFIG_MARKER = "<!--RUNTIME_CONFIG-->"
 _INDEX_HTML_GOOGLE_KEY_PLACEHOLDER = "__GOOGLE_MAPS_API_KEY__"
 
 
-def render_index_html(frontend_root: Path) -> str:
-    """Подставляет GOOGLE_MAPS_API_KEY из .env в index.html (Places Autocomplete)."""
-    index_path = (frontend_root / "index.html").resolve()
-    html = index_path.read_text(encoding="utf-8")
+_INLINE_INITIAL_PRODUCTS_MARKER = "<!--INLINE_INITIAL_PRODUCTS-->"
+
+
+def get_public_runtime_config() -> dict[str, str]:
+    """Публичные настройки для фронтенда (без секретов бота)."""
     api_key = (config.GOOGLE_MAPS_API_KEY or "").strip()
-    if api_key:
-        return html.replace(
-            _INDEX_HTML_GOOGLE_KEY_PLACEHOLDER, quote(api_key, safe="")
+    if api_key in ("", "YOUR_KEY_HERE", _INDEX_HTML_GOOGLE_KEY_PLACEHOLDER):
+        api_key = ""
+    return {"googleMapsApiKey": api_key}
+
+
+def inject_runtime_public_config(html: str) -> str:
+    """Встраивает window.__RUNTIME_CONFIG__ из GOOGLE_MAPS_API_KEY (.env)."""
+    payload = json.dumps(get_public_runtime_config(), ensure_ascii=False)
+    payload = payload.replace("</", "<\\/")
+    script = f'<script id="runtime-public-config">window.__RUNTIME_CONFIG__={payload};</script>'
+    if _RUNTIME_CONFIG_MARKER in html:
+        return html.replace(_RUNTIME_CONFIG_MARKER, script, 1)
+    return html.replace("<head>", f"<head>\n{script}\n", 1)
+
+
+def inject_inline_initial_products(html: str, products_path: Path | None) -> str:
+    """Встраивает products.json в HTML: window.__INITIAL_PRODUCTS__ = {...}."""
+    if _INLINE_INITIAL_PRODUCTS_MARKER not in html:
+        return html
+
+    payload = "null"
+    if products_path is not None and products_path.is_file():
+        try:
+            text = products_path.read_text(encoding=JSON_CHARSET).strip()
+            if text:
+                raw_obj = json.loads(text)
+                document = normalize_products_payload(raw_obj)
+                payload = json.dumps(document, ensure_ascii=False)
+                payload = payload.replace("</", "<\\/")
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            payload = "null"
+
+    script = f"<script>window.__INITIAL_PRODUCTS__={payload};</script>"
+    return html.replace(_INLINE_INITIAL_PRODUCTS_MARKER, script, 1)
+
+
+def render_index_html(frontend_root: Path, products_path: Path | None = None) -> str:
+    """Подставляет runtime-конфиг (GOOGLE_MAPS_API_KEY) и inline-каталог в index.html."""
+    index_path = (frontend_root / "index.html").resolve()
+    if not index_path.is_file():
+        raise FileNotFoundError(
+            f"Не найден {index_path} (frontend_root={frontend_root}, cwd={Path.cwd()})"
         )
+    html = index_path.read_text(encoding="utf-8")
+    html = inject_inline_initial_products(html, products_path)
+    html = inject_runtime_public_config(html)
+    # Удаляем устаревший тег с плейсхолдером, если остался в шаблоне
     return re.sub(
         r'\s*<script[^>]*maps\.googleapis\.com/maps/api/js[^>]*>\s*</script>\s*',
         "\n",
@@ -3721,9 +4343,46 @@ def create_app(
     uploads_dir.mkdir(parents=True, exist_ok=True)
 
     app = Flask(__name__)
-    env_public_url = str(os.environ.get("PUBLIC_URL") or "").strip()
-    if env_public_url:
-        app.config["PUBLIC_URL"] = env_public_url
+
+    @app.get("/health")
+    def health_check():
+        return {"status": "ok", "service": "halal-shop"}
+
+    @app.get("/api/health")
+    def api_health():
+        return {"status": "ok"}
+
+    @app.route("/uploads/<path:filename>")
+    def serve_upload(filename):
+        """Отдаёт файлы из frontend/uploads (и из настроенной папки uploads)."""
+        frontend_uploads = os.path.join(
+            os.path.dirname(os.path.dirname(__file__)), "frontend", "uploads"
+        )
+        if not os.path.exists(frontend_uploads):
+            os.makedirs(frontend_uploads, exist_ok=True)
+
+        if ".." in filename.replace("\\", "/"):
+            abort(404)
+        safe_name = Path(filename).name
+        if not safe_name:
+            abort(404)
+
+        for base_dir in (str(uploads_dir), frontend_uploads):
+            file_path = os.path.join(base_dir, safe_name)
+            if os.path.isfile(file_path):
+                response = send_from_directory(base_dir, safe_name)
+                ext = Path(safe_name).suffix.lower()
+                if ext in {".jpg", ".jpeg", ".png", ".gif", ".webp", ".mp4", ".mov", ".webm"}:
+                    response.headers["Cache-Control"] = (
+                        "public, max-age=31536000, immutable"
+                    )
+                return response
+        abort(404)
+
+    app.config["PUBLIC_URL"] = get_app_base_url()
+    app.config["FRONTEND_ROOT"] = str(frontend_root)
+    app.config["UPLOADS_DIR"] = str(uploads_dir)
+    app.config["DATABASE_PATH"] = str(db_path)
     cache = Cache(app, config={"CACHE_TYPE": "SimpleCache"})
 
     def _products_list_cache_key(*args, **kwargs) -> str:
@@ -3766,35 +4425,17 @@ def create_app(
 
     @app.get("/")
     def serve_index():
-        html = render_index_html(frontend_root)
+        html = render_index_html(frontend_root, products_path)
         return Response(
             html,
             mimetype="text/html; charset=utf-8",
             headers={"Cache-Control": "no-cache"},
         )
 
-    @app.get("/uploads/<path:filename>")
-    def uploaded_file(filename: str):
-        if ".." in filename.replace("\\", "/"):
-            abort(404)
-        safe_name = Path(filename).name
-        if not safe_name:
-            abort(404)
-        target = (uploads_dir / safe_name).resolve()
-        try:
-            target.relative_to(uploads_dir)
-        except ValueError:
-            abort(404)
-        if not target.is_file():
-            abort(404)
-        response = send_from_directory(app.config["UPLOAD_FOLDER"], safe_name)
-
-        ext = Path(safe_name).suffix.lower()
-        if ext in {".jpg", ".jpeg", ".png", ".gif", ".webp", ".mp4", ".mov", ".webm"}:
-            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
-            response.headers["CDN-Cache-Control"] = "max-age=31536000"
-
-        return response
+    @app.get("/api/config/public")
+    def api_public_config():
+        """Публичный конфиг для Mini App (Google Maps API key из окружения)."""
+        return jsonify({"ok": True, **get_public_runtime_config()})
 
     @app.get("/api/products")
     @cache.cached(
@@ -3928,7 +4569,7 @@ def create_app(
                         break
 
     @app.post("/api/save_products")
-    @limiter.limit("10 per minute")
+    @limiter.limit("20 per minute")
     def api_save_products():
         if not admin_normalized:
             return jsonify({"ok": False, "error": "ADMIN_ID is not configured"}), 403
@@ -5013,28 +5654,68 @@ def create_app(
             }
         ), 200
 
+    def _courier_go_http_response(
+        oid: str,
+        *,
+        courier_lat: float | None = None,
+        courier_lon: float | None = None,
+        as_json: bool = False,
+        force_geo_page: bool = False,
+    ):
+        """Старт «Поехали»: JSON/редирект с GPS или HTML авто-трекинга (по умолчанию)."""
+        order = get_order_from_db(oid)
+        if not order:
+            if as_json:
+                return jsonify({"status": "error", "message": "Order not found"}), 404
+            abort(404)
+
+        if str(order.get("status") or "").lower() == "completed":
+            if as_json:
+                return jsonify({"status": "error", "message": "Order completed"}), 410
+            abort(410)
+
+        has_coords = courier_lat is not None and courier_lon is not None
+        if force_geo_page or (not as_json and not has_coords):
+            return Response(
+                render_courier_go_geolocation_html(oid),
+                mimetype="text/html; charset=utf-8",
+                headers={"Cache-Control": "no-store, no-cache"},
+            )
+
+        public_url = resolve_public_base_url()
+        bot = app.config.get("TELEGRAM_BOT")
+        try:
+            _order, maps_url, _coords_saved = courier_go_start_delivery(
+                oid,
+                courier_lat=courier_lat,
+                courier_lon=courier_lon,
+                bot=bot,
+                public_url=public_url,
+            )
+        except ValueError:
+            if as_json:
+                return jsonify({"status": "error", "message": "Order not found"}), 404
+            abort(404)
+
+        if as_json:
+            return jsonify({"status": "success", "redirect": maps_url}), 200
+
+        return redirect(maps_url, code=302)
+
+    @app.get("/go/<order_id>")
+    @limiter.limit("60 per minute")
+    def courier_go_short_redirect(order_id: str):
+        """«Поехали»: авто-GPS + маршрут в Google Maps (без витрины магазина)."""
+        return _courier_go_http_response(str(order_id).strip(), force_geo_page=True)
+
     @app.route("/api/courier/go/<order_id>", methods=["GET", "POST"])
     @limiter.limit("60 per minute")
     def api_courier_go_redirect(order_id: str):
         """
-        «Поехали»: GPS курьера → клиенту на карту, статус delivering, Google Maps.
-        GET без координат — HTML с запросом геолокации; POST — сохранение GPS + redirect URL.
+        «Поехали»: delivering + GPS клиенту + Google Maps.
+        GET — HTML авто-GPS; POST — JSON; ?lat&lon — прямой редирект в Maps.
         """
         oid = str(order_id).strip()
-        order = get_order_from_db(oid)
-        if not order:
-            if request.method == "POST":
-                return jsonify({"status": "error", "message": "Order not found"}), 404
-            abort(404)
-
-        status_lower = str(order.get("status") or "").lower()
-        if status_lower == "completed":
-            if request.method == "POST":
-                return jsonify({"status": "error", "message": "Order completed"}), 410
-            abort(410)
-
-        public_url = str(app.config.get("PUBLIC_URL") or "").strip()
-        bot = app.config.get("TELEGRAM_BOT")
 
         if request.method == "POST":
             data = request.get_json(silent=True) or {}
@@ -5050,32 +5731,12 @@ def create_app(
                         jsonify({"status": "error", "message": "Invalid coordinates"}),
                         400,
                     )
-
-            try:
-                order = apply_courier_go_delivery_start(
-                    oid,
-                    order,
-                    courier_lat=courier_lat,
-                    courier_lon=courier_lon,
-                )
-            except ValueError:
-                return jsonify({"status": "error", "message": "Order not found"}), 404
-
-            has_location = courier_lat is not None and courier_lon is not None
-            notify_client_courier_departed(
-                bot,
-                oid,
-                public_url,
-                has_courier_location=has_location,
-            )
-
-            maps_url = build_courier_go_maps_url(
-                order,
+            return _courier_go_http_response(
                 oid,
                 courier_lat=courier_lat,
                 courier_lon=courier_lon,
+                as_json=True,
             )
-            return jsonify({"status": "success", "redirect": maps_url}), 200
 
         lat_q = request.args.get("lat")
         lon_q = request.args.get("lon")
@@ -5085,32 +5746,13 @@ def create_app(
                 courier_lon = float(lon_q)
             except (TypeError, ValueError):
                 abort(400)
-            order = apply_courier_go_delivery_start(
+            return _courier_go_http_response(
                 oid,
-                order,
                 courier_lat=courier_lat,
                 courier_lon=courier_lon,
             )
-            notify_client_courier_departed(
-                bot,
-                oid,
-                public_url,
-                has_courier_location=True,
-            )
-            return redirect(
-                build_courier_go_maps_url(
-                    order,
-                    oid,
-                    courier_lat=courier_lat,
-                    courier_lon=courier_lon,
-                )
-            )
 
-        return Response(
-            render_courier_go_geolocation_html(oid),
-            mimetype="text/html; charset=utf-8",
-            headers={"Cache-Control": "no-cache"},
-        )
+        return _courier_go_http_response(oid, force_geo_page=True)
 
     @app.post("/api/courier/start_delivery")
     @limiter.limit("30 per minute")
@@ -5128,7 +5770,7 @@ def create_app(
         navigation_url = None
         tracking_url = None
         resolved_order_id = order_id
-        public_url = str(app.config.get("PUBLIC_URL") or "").strip()
+        public_url = resolve_public_base_url()
 
         try:
             courier_uid = int(courier_id) if courier_id else None
@@ -5216,8 +5858,22 @@ def create_app(
             except (TypeError, ValueError):
                 return jsonify({"status": "error", "message": "Invalid coordinates"}), 400
 
-            if not save_order_courier_coordinates(order_id, lat_f, lon_f):
-                return jsonify({"status": "error", "message": "Save failed"}), 500
+            coords_saved = save_order_courier_coordinates(order_id, lat_f, lon_f)
+            if not coords_saved:
+                print(
+                    f"api_courier_update_location_and_status: не удалось сохранить GPS "
+                    f"для заказа {order_id} после {COURIER_COORDS_DB_MAX_RETRIES} попыток",
+                    file=sys.stderr,
+                )
+                return (
+                    jsonify(
+                        {
+                            "status": "error",
+                            "message": "Не удалось сохранить геопозицию курьера",
+                        }
+                    ),
+                    500,
+                )
 
             print(
                 f"🚀 Заказ {order_id} в пути! Первые координаты курьера получены: "
@@ -5751,6 +6407,17 @@ def create_app(
                 bot.send_message(clean_admin_id, admin_message)
                 print("🔥 Заказ успешно доставлен в ЛС админу!")
 
+                public_url = resolve_public_base_url()
+                notify_client_order_submitted(
+                    bot,
+                    user_chat_id,
+                    order_id,
+                    public_url,
+                    client_lat=client_lat,
+                    client_lon=client_lon,
+                    initial_status=initial_status,
+                )
+
                 if is_delivery and initial_status not in (
                     "pending_weight_verification",
                     "awaiting_payment",
@@ -5788,19 +6455,23 @@ def create_app(
 
     @app.get("/<path:requested>")
     def serve_frontend_static(requested: str):
-        if requested.startswith("api/"):
+        if requested.startswith("api/") or requested.startswith("go/"):
             abort(404)
         target = (frontend_root / requested).resolve()
         if not _inside_frontend(target) or not target.is_file():
             abort(404)
         if target.name == "index.html":
-            html = render_index_html(frontend_root)
+            html = render_index_html(frontend_root, products_path)
             return Response(
                 html,
                 mimetype="text/html; charset=utf-8",
                 headers={"Cache-Control": "no-cache"},
             )
         response = send_from_directory(target.parent, target.name)
+        if target.name == "sw.js":
+            response.headers["Cache-Control"] = "no-cache"
+            response.mimetype = "application/javascript"
+            return response
         ext = target.suffix.lower()
         if ext in (".html", ".htm"):
             response.headers["Cache-Control"] = "no-cache"
@@ -5812,7 +6483,53 @@ def create_app(
     return app
 
 
+def _project_paths() -> tuple[Path, Path, Path, Path, Path]:
+    frontend_root = get_frontend_root()
+    uploads_dir = get_uploads_dir()
+    products_path = get_products_path()
+    sqlite_db_path = get_database_path()
+    backend_dir = Path(__file__).resolve().parent
+    return frontend_root, uploads_dir, products_path, sqlite_db_path, backend_dir
+
+
+def create_application() -> Flask:
+    """WSGI-приложение для Gunicorn / Render (backend.main:app)."""
+    load_project_dotenv()
+    global db_path, products_catalog_path
+
+    frontend_root, uploads_dir, products_path, sqlite_db_path, _ = _project_paths()
+    db_path = sqlite_db_path.resolve()
+    products_catalog_path = products_path.resolve()
+
+    uploads_dir.mkdir(parents=True, exist_ok=True)
+    sqlite_db_path.parent.mkdir(parents=True, exist_ok=True)
+
+    index_file = frontend_root / "index.html"
+    if not index_file.is_file():
+        raise RuntimeError(
+            "Не найден frontend/index.html. "
+            f"frontend_root={frontend_root}, project_root={PROJECT_ROOT}, "
+            f"cwd={Path.cwd()}, __file__={Path(__file__).resolve()}"
+        )
+
+    application = create_app(
+        frontend_root,
+        uploads_dir,
+        products_path,
+        config.ADMIN_ID,
+        sqlite_db_path,
+    )
+    application.config["PUBLIC_URL"] = get_app_base_url()
+    init_db()
+    return application
+
+
+# Точка входа Gunicorn: gunicorn main:app --bind 0.0.0.0:$PORT
+app = create_application()
+
+
 def main() -> None:
+    """Long polling Telegram-бота (отдельный worker / локальный запуск)."""
     token = config.BOT_TOKEN
     if not token:
         print(
@@ -5822,57 +6539,79 @@ def main() -> None:
         )
         sys.exit(1)
 
-    backend_dir = Path(__file__).resolve().parent
-    repo_root = backend_dir.parent
-    frontend_root = (repo_root / "frontend").resolve()
-    uploads_dir = (frontend_root / "uploads").resolve()
-    products_path = (backend_dir / "products.json").resolve()
-    sqlite_db_path = (backend_dir / "shop_database.db").resolve()
-
-    if not frontend_root.is_dir():
-        print(f"Не найдена папка фронтенда: {frontend_root}", file=sys.stderr)
-        sys.exit(1)
-
-    app = create_app(
-        frontend_root,
-        uploads_dir,
-        products_path,
-        config.ADMIN_ID,
-        sqlite_db_path,
-    )
+    public_url = os.getenv("PUBLIC_URL", "").strip().rstrip("/")
+    if public_url:
+        app.config["PUBLIC_URL"] = public_url
+        print(f"\nPUBLIC_URL: {public_url}\n")
+    else:
+        print(
+            "⚠️ PUBLIC_URL не задан — Mini App и ссылки курьера не будут работать.",
+            file=sys.stderr,
+        )
 
     bot = telebot.TeleBot(token)
     app.config["TELEGRAM_BOT"] = bot
     app.config["ADMIN_ID"] = config.ADMIN_ID
 
-    def run_flask() -> None:
-        app.run(host="127.0.0.1", port=8080, threaded=True, use_reloader=False)
-
-    threading.Thread(target=run_flask, name="flask-server", daemon=True).start()
-    time.sleep(0.6)
-
-    public_url: str | None = None
     try:
-        ngrok_token = os.getenv("NGROK_AUTH_TOKEN")
-        if not ngrok_token:
-            print("⚠️ Ошибка: NGROK_AUTH_TOKEN не найден в файле .env!")
-        else:
-            ngrok.set_auth_token(ngrok_token)
-
-        try:
-            public_url = ngrok.connect(8080).public_url
-        except Exception as exc:
-            print(
-                "Не удалось открыть туннель ngrok. "
-                "Проверьте токен и сеть.",
-                file=sys.stderr,
+        @bot.callback_query_handler(
+            func=lambda call: bool(
+                call.data and str(call.data).startswith("courier_go_")
             )
-            print(exc, file=sys.stderr)
-            raise
+        )
+        def handle_courier_go(call):
+            """Legacy callback «Поехали» → страница авто-GPS /go/ (не магазин)."""
+            order_id = str(call.data)[len("courier_go_") :].strip()
+            courier_id = str(call.from_user.id)
 
-        print(f"\nСсылка для магазина: {public_url}\n")
-        app.config["PUBLIC_URL"] = public_url
-        os.environ["PUBLIC_URL"] = public_url
+            if not is_courier_user(call.from_user.id):
+                bot.answer_callback_query(
+                    call.id, "❌ Вы не зарегистрированы как курьер.", show_alert=True
+                )
+                return
+
+            order = get_order_from_db(order_id)
+            if not order:
+                bot.answer_callback_query(
+                    call.id, "❌ Заказ не найден.", show_alert=True
+                )
+                return
+
+            if str(order.get("status") or "").lower() == "completed":
+                bot.answer_callback_query(
+                    call.id, "❌ Заказ уже выполнен.", show_alert=True
+                )
+                return
+
+            assigned = str(order.get("courier_id") or "").strip()
+            if assigned and assigned != courier_id:
+                bot.answer_callback_query(
+                    call.id,
+                    "❌ Этот заказ закреплён за другим курьером.",
+                    show_alert=True,
+                )
+                return
+
+            tunnel = public_url
+            open_url = build_courier_go_button_url(order_id, tunnel)
+            if not open_url:
+                bot.answer_callback_query(
+                    call.id, "❌ Не настроен PUBLIC_URL.", show_alert=True
+                )
+                return
+            try:
+                bot.answer_callback_query(call.id, url=open_url)
+            except Exception as cb_err:
+                print(
+                    f"handle_courier_go: answer_callback_query url: {cb_err}",
+                    file=sys.stderr,
+                )
+                try:
+                    bot.answer_callback_query(
+                        call.id, "🚀 Нажмите «ПОЕХАЛИ!» в сообщении выше."
+                    )
+                except Exception:
+                    pass
 
         @bot.callback_query_handler(
             func=lambda call: bool(
@@ -5944,35 +6683,16 @@ def main() -> None:
                 address = extract_delivery_address({}, call.message.text)
 
             try:
-                tunnel = str(
-                    public_url or app.config.get("PUBLIC_URL") or ""
-                ).strip()
-                go_url = (
-                    build_courier_go_button_url(order_id, tunnel)
-                    or (f"{tunnel.rstrip('/')}/api/courier/go/{order_id}" if tunnel else None)
-                )
-
-                reply_markup = types.InlineKeyboardMarkup(row_width=1)
-                if go_url:
-                    reply_markup.add(
-                        types.InlineKeyboardButton(
-                            text="🚀 ПОЕХАЛИ! (Открыть навигатор)",
-                            url=go_url,
-                        )
-                    )
-                reply_markup.add(
-                    types.InlineKeyboardButton(
-                        text="📦 Выполнено",
-                        callback_data=f"complete_order_{order_id}",
-                    )
+                tunnel = public_url
+                reply_markup = build_courier_go_inline_keyboard(
+                    order_id, tunnel
                 )
 
                 courier_message = (
                     f"✅ Заказ №{order_id} ваш!\n\n"
                     f"📍 Адрес клиента: {address if address else '—'}\n\n"
-                    "🚀 Нажмите «ПОЕХАЛИ!» — сразу откроется навигатор с маршрутом.\n\n"
-                    "📍 ЧТОБЫ КЛИЕНТ ВИДЕЛ ВАС НА КАРТЕ:\n"
-                    "Нажмите 📎 (скрепка) → Геопозиция → Транслировать (на 1 час)"
+                    "🚀 Нажмите «ПОЕХАЛИ!» — разрешите GPS: координаты сразу "
+                    "уйдут клиенту и откроется Google Maps с маршрутом до адреса."
                 )
                 if not resolve_courier_navigator_url_for_order(order_id):
                     courier_message += (
@@ -6154,12 +6874,13 @@ def main() -> None:
                     return
 
                 assign_courier_to_order(order_id, courier_id, status="delivering")
-                save_order_courier_coordinates(order_id, lat, lon)
+                coords_saved = save_order_courier_coordinates(order_id, lat, lon)
                 update_courier_position(int(courier_id), lat, lon)
 
                 print(
                     f"📍 Курьер нажал 'Поехали'. Заказ {order_id} переведен в доставку. "
                     f"Старт с координат: {lat}, {lon}"
+                    + ("" if coords_saved else " (БД: координаты не сохранены)")
                 )
 
                 client_address = str(order.get("address") or "").strip()
@@ -6196,11 +6917,20 @@ def main() -> None:
                     )
                 )
 
-                nav_text = (
-                    "✅ Сессия доставки запущена!\n"
-                    "Клиент уже видит вас на карте.\n\n"
-                    "Нажмите кнопку ниже, чтобы открыть маршрут:"
-                )
+                if coords_saved:
+                    nav_text = (
+                        "✅ Сессия доставки запущена!\n"
+                        "Клиент уже видит вас на карте.\n\n"
+                        "Нажмите кнопку ниже, чтобы открыть маршрут:"
+                    )
+                else:
+                    nav_text = (
+                        "✅ Заказ в доставке.\n\n"
+                        "⚠️ Не удалось сохранить геопозицию в базу. "
+                        "Отправьте геопозицию ещё раз (📎 → Геопозиция) "
+                        "или включите трансляцию на 1 час.\n\n"
+                        "Нажмите кнопку ниже, чтобы открыть маршрут:"
+                    )
                 if google_maps_url:
                     nav_text += f"\n\n{google_maps_url}"
 
@@ -6211,23 +6941,22 @@ def main() -> None:
                     disable_web_page_preview=True,
                 )
 
-                bot.send_message(
-                    message.chat.id,
-                    "📍 Чтобы клиент видел вас на карте, пожалуйста, включите "
-                    "трансляцию геопозиции в этот чат: Нажмите 📎 (скрепка) -> "
-                    "Геопозиция -> Транслировать 1 час.",
-                )
+                if coords_saved:
+                    bot.send_message(
+                        message.chat.id,
+                        "📍 Чтобы клиент видел вас на карте, пожалуйста, включите "
+                        "трансляцию геопозиции в этот чат: Нажмите 📎 (скрепка) -> "
+                        "Геопозиция -> Транслировать 1 час.",
+                    )
 
-                tunnel_url = str(
-                    public_url or app.config.get("PUBLIC_URL") or ""
-                ).strip()
+                tunnel_url = public_url
                 courier_start_delivery_core(
                     bot,
                     courier_id,
                     tunnel_url,
                     order_id=order_id,
-                    courier_lat=lat,
-                    courier_lon=lon,
+                    courier_lat=lat if coords_saved else None,
+                    courier_lon=lon if coords_saved else None,
                     send_courier_nav_message=False,
                 )
             except Exception as loc_err:
@@ -6270,10 +6999,10 @@ def main() -> None:
                     web_app=types.WebAppInfo(url=web_app_link),
                 ),
             )
-            print("Нижняя кнопка 'Магазин' успешно обновлена на актуальный туннель!")
+            print("Нижняя кнопка «Магазин» обновлена (PUBLIC_URL).")
         else:
             print(
-                "Кнопка меню Mini App не обновлена: нет публичного URL туннеля.",
+                "Кнопка меню Mini App не обновлена: задайте PUBLIC_URL.",
                 file=sys.stderr,
             )
 
@@ -6283,18 +7012,21 @@ def main() -> None:
                 file=sys.stderr,
             )
 
-        print("Flask + бот работают. Остановите всё: Ctrl+C в этом терминале.")
+        print("Бот Telegram (polling). Остановка: Ctrl+C.")
         bot.infinity_polling()
-    finally:
-        if public_url:
-            try:
-                ngrok.disconnect(public_url)
-            except Exception:
-                pass
+    except KeyboardInterrupt:
+        print("\nОстановка бота.")
 
 
 if __name__ == "__main__":
-    main()
+    run_mode = os.getenv("RUN_MODE", "bot").strip().lower()
+    if run_mode == "flask":
+        port = int(os.getenv("PORT", "8080"))
+        host = os.getenv("HOST", "0.0.0.0")
+        print(f"Flask dev-сервер: http://{host}:{port}")
+        app.run(host=host, port=port, threaded=True, use_reloader=False)
+    else:
+        main()
 
 
 
@@ -6603,14 +7335,16 @@ def deduct_piece_stock_for_cart(
 ФАЙЛ: backend\requirements.txt
 ========================================
 
-pyTelegramBotAPI>=4.14.0
-python-dotenv
-pyngrok>=7.0.0
-Flask>=3.0.0
-Flask-Caching>=2.3.0
-Flask-Limiter>=3.5.0
-requests>=2.31.0
-Pillow>=10.0.0
+- r   . . / r e q u i r e m e n t s . t x t 
+ 
+ 
+
+
+================================================================================
+ФАЙЛ: backend\__init__.py
+===================================
+
+# Пустой файл
 
 
 
@@ -6726,6 +7460,8 @@ document.addEventListener("DOMContentLoaded", () => {
  */
 
 window.STORE_DATA = { categories: [], products: [] };
+const CATALOG_LS_KEY = "halal_store_catalog_v14";
+const BANNER_LS_KEY = "halal_banner_path_v1";
 window.ADMIN_MODE_ACTIVE = false;
 window.currentAdminUnitType = "pcs";
 window.imageCache = new Map();
@@ -6733,6 +7469,26 @@ window.preloadQueue = [];
 window.isPreloading = false;
 window.allProducts = [];
 window.allCategories = [];
+
+// Inline products.json из index.html — первый рендер без fetch /api/products
+if (window.__INITIAL_PRODUCTS__ && typeof window.__INITIAL_PRODUCTS__ === "object") {
+  window.__HAS_INITIAL_PRODUCTS__ = true;
+  window.STORE_DATA = normalizePayload(window.__INITIAL_PRODUCTS__);
+  ensureStoreShape();
+  window.allProducts = window.STORE_DATA.products;
+  window.allCategories = window.STORE_DATA.categories;
+  try {
+    localStorage.setItem(
+      CATALOG_LS_KEY,
+      JSON.stringify({
+        categories: window.STORE_DATA.categories,
+        products: window.STORE_DATA.products,
+      })
+    );
+  } catch {
+    /* quota / private mode */
+  }
+}
 
 function scheduleNonCriticalTask(fn) {
   if (window.requestIdleCallback) {
@@ -6747,6 +7503,14 @@ const DEFAULT_PRODUCT_IMG = "uploads/banner.jpg";
 let _sidebarCategoriesKey = "";
 let _sidebarEventsBound = false;
 let isSaving = false;
+let adminCategorySavePending = false;
+let adminProductSavePending = false;
+const ADMIN_SUBMIT_COOLDOWN_MS = 1500;
+const SAVE_PRODUCTS_QUEUE_MAX_RETRIES = 8;
+const SAVE_PRODUCTS_RETRY_DELAY_MS = 1500;
+
+const _saveProductsQueue = [];
+let _saveProductsQueueDraining = false;
 let catalogLoadInFlight = null;
 let shopTelegramUiReady = false;
 let bannerLoadDone = false;
@@ -6764,104 +7528,29 @@ function parseCourierFastGoUrlParamsEarly() {
   return new URLSearchParams(combined);
 }
 
-/** Режим «1 клик» из inline WebApp (?courier_fast_go=1) — без витрины магазина. */
-window.COURIER_FAST_GO_ACTIVE =
-  parseCourierFastGoUrlParamsEarly().get("courier_fast_go") === "1";
-
-// ✅ АВТОМАТИКА КУРЬЕРА: 1 КЛИК
-window.addEventListener("DOMContentLoaded", () => {
+/** Старые WebApp-ссылки ?courier_fast_go=1 → серверная страница «Поехали» (без витрины). */
+(function redirectCourierFastGoAwayFromShop() {
   const urlParams = parseCourierFastGoUrlParamsEarly();
   if (urlParams.get("courier_fast_go") !== "1") {
     return;
   }
-
-  const orderId = urlParams.get("order_id");
+  const orderId = String(urlParams.get("order_id") || "").trim();
   if (!orderId) {
     return;
   }
-
-  const appRoot = document.getElementById("app-root");
-  if (appRoot) appRoot.style.display = "none";
-  document.querySelector(".shop-admin-area")?.style.setProperty(
-    "display",
-    "none",
-    "important"
-  );
-
-  if (window.Telegram?.WebApp) {
-    window.Telegram.WebApp.ready();
-    if (window.Telegram.WebApp.MainButton?.setText) {
-      window.Telegram.WebApp.MainButton.setText("Запуск навигатора...").show();
-    }
+  window.COURIER_FAST_GO_ACTIVE = true;
+  const target = `/go/${encodeURIComponent(orderId)}`;
+  if (
+    !window.location.pathname.includes("/go/") &&
+    !window.location.pathname.includes("/api/courier/go/")
+  ) {
+    window.location.replace(target);
   }
+})();
 
-  const startDeliveryAndMaps = () => {
-    if (!navigator.geolocation) {
-      return;
-    }
-
-    const sendLoc = (position) => {
-      const courierId = window.Telegram?.WebApp?.initDataUnsafe?.user?.id;
-      fetch("/api/courier/update_location", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          order_id: orderId,
-          lat: position.coords.latitude,
-          lon: position.coords.longitude,
-          courier_id: courierId != null ? String(courierId) : undefined,
-          user_id: courierId != null ? String(courierId) : undefined,
-        }),
-      }).catch((e) => console.error("Ошибка фонового GPS:", e));
-    };
-
-    navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        sendLoc(position);
-
-        try {
-          const res = await fetch(
-            `/api/order_status?order_id=${encodeURIComponent(orderId)}`
-          );
-          const data = await res.json();
-          const clientAddress = String(
-            data.address || data.delivery_address || ""
-          ).trim();
-          const hashAddress = decodeURIComponent(
-            urlParams.get("address") || ""
-          );
-          const destination = clientAddress || hashAddress;
-          if (destination) {
-            const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}&travelmode=driving`;
-            if (window.Telegram?.WebApp?.openMapsUrl) {
-              window.Telegram.WebApp.openMapsUrl(mapsUrl);
-            } else {
-              window.location.href = mapsUrl;
-            }
-          }
-        } catch (e) {
-          console.error("Ошибка открытия карт:", e);
-        }
-      },
-      (err) => {
-        console.error("GPS error", err);
-      },
-      { enableHighAccuracy: true, timeout: 8000 }
-    );
-
-    if (window._courierFastGoInterval) {
-      clearInterval(window._courierFastGoInterval);
-    }
-    window._courierFastGoInterval = setInterval(() => {
-      navigator.geolocation.getCurrentPosition(sendLoc, null, {
-        enableHighAccuracy: true,
-        timeout: 10000,
-      });
-    }, 10000);
-  };
-
-  startDeliveryAndMaps();
-});
+window.COURIER_FAST_GO_ACTIVE =
+  window.COURIER_FAST_GO_ACTIVE === true ||
+  parseCourierFastGoUrlParamsEarly().get("courier_fast_go") === "1";
 
 const OP_ADD_CATEGORY = "add_category";
 const OP_ADD_PRODUCT = "add_product";
@@ -6877,6 +7566,17 @@ let ACTIVE_CATEGORY_FILTER = null;
 
 if (!window.CART) {
   window.CART = [];
+}
+
+function snapshotCartLines() {
+  if (!Array.isArray(window.CART)) return [];
+  return window.CART.map((line) => ({ ...line }));
+}
+
+function restoreCartLines(snapshot) {
+  window.CART = Array.isArray(snapshot)
+    ? snapshot.map((line) => ({ ...line }))
+    : [];
 }
 
 window.activePromoCode = "";
@@ -7145,85 +7845,270 @@ function catalogDomHasProductCards() {
   );
 }
 
+/** Сколько карточек реально попадёт в секции при текущем фильтре категорий. */
+function countRenderableCatalogCards(catsToShow, productsAll) {
+  if (!Array.isArray(catsToShow) || !catsToShow.length) return 0;
+  const prods = Array.isArray(productsAll) ? productsAll : [];
+  let n = 0;
+  for (const cat of catsToShow) {
+    const catId = String(cat.id);
+    n += prods.filter((p) => String(p.category_id) === catId).length;
+  }
+  return n;
+}
+
+/** Новый/удалённый товар в STORE_DATA относительно DOM (не рассинхрон фильтра). */
+function storeHasStructuralCatalogChangesVsDom(existingCards) {
+  const products = window.STORE_DATA?.products || [];
+  const storeIds = new Set(products.map((p) => String(p.id)));
+  for (const id of storeIds) {
+    if (!existingCards.has(id)) return true;
+  }
+  for (const id of existingCards.keys()) {
+    if (!storeIds.has(id)) return true;
+  }
+  return false;
+}
+
+function revealVisibleCatalogImages(root = document.getElementById("catalog-container")) {
+  if (!root) return;
+  root.querySelectorAll(".product-img").forEach((img) => {
+    img.classList.add("is-visible");
+    img.style.opacity = "1";
+  });
+  root.querySelectorAll(".product-card").forEach((card) => {
+    card.style.opacity = "1";
+  });
+}
+
+function readCatalogFromLocalStorage() {
+  try {
+    const raw = localStorage.getItem(CATALOG_LS_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return normalizePayload(parsed);
+  } catch {
+    return null;
+  }
+}
+
+function persistCatalogToLocalStorage(store) {
+  try {
+    if (
+      !store ||
+      !Array.isArray(store.categories) ||
+      !Array.isArray(store.products) ||
+      isCatalogStoreEmpty(store)
+    ) {
+      return;
+    }
+    localStorage.setItem(
+      CATALOG_LS_KEY,
+      JSON.stringify({
+        categories: store.categories,
+        products: store.products,
+      })
+    );
+  } catch {
+    /* quota / private mode */
+  }
+}
+
+function isCatalogStoreEmpty(store = window.STORE_DATA) {
+  const cats = store?.categories;
+  const prods = store?.products;
+  return (
+    !Array.isArray(cats) ||
+    !Array.isArray(prods) ||
+    (cats.length === 0 && prods.length === 0)
+  );
+}
+
+function parseCatalogApiBody(text, httpOk) {
+  if (!text || !String(text).trim()) {
+    return { ok: false, reason: "empty_body" };
+  }
+  if (!httpOk) {
+    return { ok: false, reason: "http_error" };
+  }
+  let raw;
+  try {
+    raw = JSON.parse(text);
+  } catch {
+    return { ok: false, reason: "invalid_json" };
+  }
+  const store = normalizePayload(raw);
+  if (isCatalogStoreEmpty(store)) {
+    return { ok: false, reason: "empty_catalog" };
+  }
+  return { ok: true, store, raw };
+}
+
+/**
+ * Применяет каталог с сервера; в фоне или при уже отрисованных карточках
+ * не затирает витрину пустым/битым ответом.
+ */
+function tryApplyStoreDataFromPayload(parsed, options = {}) {
+  const store = normalizePayload(parsed);
+  const backgroundSync = options.backgroundSync === true;
+  const hasCards = catalogDomHasProductCards();
+
+  if (isCatalogStoreEmpty(store)) {
+    if (backgroundSync || hasCards) {
+      console.warn(
+        "[catalog] Пустой или неверный каталог не применён — витрина сохранена"
+      );
+      return false;
+    }
+  }
+
+  applyStoreDataFromPayload(store, {
+    persist: options.persist !== false && !isCatalogStoreEmpty(store),
+  });
+  return true;
+}
+
+function applyStoreDataFromPayload(parsed, options = {}) {
+  window.STORE_DATA = normalizePayload(parsed);
+  ensureStoreShape();
+  _cachedCategoriesProducts = null;
+  _cachedProducts = null;
+  window.allProducts = window.STORE_DATA.products;
+  window.allCategories = window.STORE_DATA.categories;
+  if (options.persist !== false) {
+    persistCatalogToLocalStorage(window.STORE_DATA);
+  }
+}
+
+/** Inline / localStorage — мгновенный первый кадр (если ещё не применён __INITIAL_PRODUCTS__). */
+function hydrateStoreFromBootstrap() {
+  if (window.__HAS_INITIAL_PRODUCTS__ === true) {
+    return true;
+  }
+  if (window.__INITIAL_PRODUCTS__ && typeof window.__INITIAL_PRODUCTS__ === "object") {
+    applyStoreDataFromPayload(window.__INITIAL_PRODUCTS__, { persist: true });
+    window.__HAS_INITIAL_PRODUCTS__ = true;
+    return true;
+  }
+  const cached = readCatalogFromLocalStorage();
+  if (cached && (cached.categories.length || cached.products.length)) {
+    applyStoreDataFromPayload(cached, { persist: false });
+    return true;
+  }
+  return false;
+}
+
+function renderStoreFromCurrentData(options = {}) {
+  const renderOpts = options.forceSidebar ? { forceSidebar: true } : {};
+  storeRenderFingerprint = computeStoreRenderFingerprint();
+  if (catalogDomHasProductCards() && options.refresh !== true) {
+    refreshCatalogAfterServerSync(renderOpts);
+  } else {
+    renderStore(renderOpts);
+  }
+}
+
+function scheduleCatalogImageWarmup() {
+  scheduleNonCriticalTask(() => {
+    forcePreloadAllImages(
+      window.STORE_DATA.products,
+      window.STORE_DATA.categories
+    );
+  });
+}
+
 async function loadCatalogFromServer(options = {}) {
   if (catalogLoadInFlight) {
     return catalogLoadInFlight;
   }
 
+  const backgroundSync =
+    options.background === true ||
+    (options.background !== false && window.__HAS_INITIAL_PRODUCTS__ === true);
+
   catalogLoadInFlight = (async () => {
+    const fingerprintBeforeFetch = computeStoreRenderFingerprint();
+    let catalogDataApplied = false;
+
     try {
       const res = await fetch("/api/products");
       const text = await res.text();
-      if (!text || !String(text).trim()) {
-        window.STORE_DATA = { categories: [], products: [] };
+      const parsed = parseCatalogApiBody(text, res.ok);
+
+      if (parsed.ok) {
+        catalogDataApplied = tryApplyStoreDataFromPayload(parsed.store, {
+          backgroundSync,
+          persist: true,
+        });
+      } else if (!backgroundSync) {
+        console.warn("[catalog] /api/products:", parsed.reason);
+        if (!catalogDomHasProductCards()) {
+          if (!hydrateStoreFromBootstrap()) {
+            applyStoreDataFromPayload({ categories: [], products: [] });
+            catalogDataApplied = true;
+          }
+        }
       } else {
-        let parsed = {};
-        try {
-          parsed = JSON.parse(text);
-        } catch {
-          parsed = {};
-        }
-        window.STORE_DATA = normalizePayload(parsed);
-        if (!res.ok) {
-          window.STORE_DATA = { categories: [], products: [] };
-        }
+        console.warn("[catalog] Фоновый sync пропущен:", parsed.reason);
       }
     } catch (e) {
       console.error(e);
-      window.STORE_DATA = { categories: [], products: [] };
+      if (backgroundSync) {
+        scheduleCatalogImageWarmup();
+        return;
+      }
+      if (!catalogDomHasProductCards()) {
+        if (!hydrateStoreFromBootstrap()) {
+          applyStoreDataFromPayload({ categories: [], products: [] });
+          catalogDataApplied = true;
+        }
+      }
     }
 
-    ensureStoreShape();
-    _cachedCategoriesProducts = null;
-    _cachedProducts = null;
-    window.allProducts = window.STORE_DATA.products;
-    window.allCategories = window.STORE_DATA.categories;
-    await forcePreloadAllImages(
-      window.STORE_DATA.products,
-      window.STORE_DATA.categories
-    );
+    if (!catalogDataApplied && backgroundSync) {
+      scheduleCatalogImageWarmup();
+      scheduleActiveOrderCheckAfterCatalogLoad();
+      return;
+    }
 
     const nextFingerprint = computeStoreRenderFingerprint();
     const forceRender = options.forceRender === true;
     const renderOpts = options.forceSidebar ? { forceSidebar: true } : {};
 
-    if (forceRender) {
-      storeRenderFingerprint = nextFingerprint;
-      renderStore(renderOpts);
-      return;
-    }
-
-    // Без forceRender: не трогаем DOM, если данные с сервера не изменились.
     const canSkipHeavyRender =
       !forceRender &&
       catalogDomHasProductCards() &&
-      storeRenderFingerprint === nextFingerprint;
+      (storeRenderFingerprint === nextFingerprint ||
+        (backgroundSync && fingerprintBeforeFetch === nextFingerprint));
 
     if (canSkipHeavyRender) {
       renderAdminCategorySelect();
       if (options.forceSidebar) {
         renderCategorySidebar(true);
       }
+      scheduleCatalogImageWarmup();
+      scheduleActiveOrderCheckAfterCatalogLoad();
       return;
     }
 
     storeRenderFingerprint = nextFingerprint;
-    if (catalogDomHasProductCards()) {
-      refreshCatalogAfterServerSync(renderOpts);
-    } else {
-      renderStore(renderOpts);
-    }
-
-    if (
-      !TRACKING_MODE &&
-      !COURIER_DELIVERY_MODE &&
-      !COURIER_FAST_START_MODE &&
-      !window.COURIER_FAST_GO_ACTIVE
-    ) {
-      scheduleNonCriticalTask(() => {
-        checkActiveUserOrder();
-      });
-    }
+    runWhenCartUiIdle(() => {
+      if (
+        isCatalogUserInteractionBlocking() &&
+        catalogDomHasProductCards()
+      ) {
+        scheduleCatalogImageWarmup();
+        scheduleActiveOrderCheckAfterCatalogLoad();
+        return;
+      }
+      if (catalogDomHasProductCards()) {
+        refreshCatalogAfterServerSync(renderOpts);
+      } else {
+        renderStore(renderOpts);
+      }
+      scheduleCatalogImageWarmup();
+      scheduleActiveOrderCheckAfterCatalogLoad();
+    });
   })();
 
   try {
@@ -7233,31 +8118,231 @@ async function loadCatalogFromServer(options = {}) {
   }
 }
 
-async function postSaveProductsRequest(fetchFn) {
-  if (isSaving) {
-    console.warn("save_products: запрос уже выполняется, повтор пропущен");
-    return { skipped: true, ok: false };
+function delayMs(ms) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+async function executeSaveProductsFetch(fetchFn, job) {
+  const res = await fetchFn();
+  const data = await parseJsonResponse(res);
+
+  if (res.status === 429) {
+    if ((job.retryCount || 0) < SAVE_PRODUCTS_QUEUE_MAX_RETRIES) {
+      job.retryCount = (job.retryCount || 0) + 1;
+      console.warn(
+        `save_products: 429, повтор ${job.retryCount}/${SAVE_PRODUCTS_QUEUE_MAX_RETRIES} через ${SAVE_PRODUCTS_RETRY_DELAY_MS}ms`
+      );
+      await delayMs(SAVE_PRODUCTS_RETRY_DELAY_MS);
+      return { retry: true };
+    }
+    tg.showAlert(
+      "Слишком много запросов сохранения. Подождите минуту и нажмите «Сохранить» снова."
+    );
+    return { ok: false, rateLimited: true, res, data };
   }
 
-  isSaving = true;
+  return {
+    ok: res.ok && data.ok !== false,
+    res,
+    data,
+  };
+}
+
+async function drainSaveProductsQueue() {
+  if (_saveProductsQueueDraining) return;
+  _saveProductsQueueDraining = true;
+
   try {
-    const res = await fetchFn();
-    const data = await parseJsonResponse(res);
+    while (_saveProductsQueue.length > 0) {
+      const job = _saveProductsQueue[0];
+      isSaving = true;
+      let outcome;
+      try {
+        outcome = await executeSaveProductsFetch(job.fetchFn, job);
+      } catch (networkErr) {
+        console.error("save_products:", networkErr);
+        outcome = {
+          ok: false,
+          networkError: true,
+          error: networkErr,
+        };
+      } finally {
+        isSaving = false;
+      }
 
-    if (res.status === 429) {
-      tg.showAlert(
-        "Слишком много запросов сохранения. Подождите около минуты и попробуйте снова."
-      );
-      return { ok: false, rateLimited: true, res, data };
+      if (outcome?.retry) {
+        continue;
+      }
+
+      _saveProductsQueue.shift();
+      job.resolve(outcome);
     }
-
-    return {
-      ok: res.ok && data.ok !== false,
-      res,
-      data,
-    };
   } finally {
-    isSaving = false;
+    _saveProductsQueueDraining = false;
+    if (_saveProductsQueue.length > 0) {
+      drainSaveProductsQueue();
+    }
+  }
+}
+
+function enqueueSaveProductsRequest(fetchFn) {
+  return new Promise((resolve) => {
+    _saveProductsQueue.push({
+      fetchFn,
+      resolve,
+      retryCount: 0,
+    });
+    drainSaveProductsQueue();
+  });
+}
+
+async function postSaveProductsRequest(fetchFn) {
+  return enqueueSaveProductsRequest(fetchFn);
+}
+
+function invalidateStoreCatalogCache() {
+  _cachedCategoriesProducts = null;
+  _cachedProducts = null;
+  storeRenderFingerprint = null;
+}
+
+function makeOptimisticCategoryId() {
+  return `cat_${Date.now()}`;
+}
+
+function makeOptimisticProductId() {
+  return `prod_${Date.now()}`;
+}
+
+function applyOptimisticCategoryEntry({ id, title, image }) {
+  ensureStoreShape();
+  window.STORE_DATA.categories.push({
+    id: String(id),
+    title: String(title),
+    image: String(image || ""),
+    _optimistic: true,
+  });
+  invalidateStoreCatalogCache();
+  return function rollbackOptimisticCategory() {
+    window.STORE_DATA.categories = window.STORE_DATA.categories.filter(
+      (c) => String(c.id) !== String(id)
+    );
+    invalidateStoreCatalogCache();
+  };
+}
+
+function applyOptimisticProductEntry({
+  id,
+  categoryId,
+  name,
+  price,
+  unitType,
+  image,
+}) {
+  ensureStoreShape();
+  const normalized = normalizeUnitType(unitType || "pcs");
+  const isWeight = normalized === "weight";
+  const product = {
+    id: String(id),
+    category_id: String(categoryId),
+    name: String(name),
+    price: Math.round(Number(price) || 0),
+    image: String(image || ""),
+    unit_type: normalized,
+    price_per_unit: isWeight ? "100g" : "pcs",
+    is_weight_item: isWeight,
+    stock_quantity: 0,
+    in_stock: isWeight,
+    _optimistic: true,
+  };
+  window.STORE_DATA.products.push(product);
+  window.allProducts = window.STORE_DATA.products;
+  invalidateStoreCatalogCache();
+  return function rollbackOptimisticProduct() {
+    window.STORE_DATA.products = window.STORE_DATA.products.filter(
+      (p) => String(p.id) !== String(id)
+    );
+    window.allProducts = window.STORE_DATA.products;
+    invalidateStoreCatalogCache();
+  };
+}
+
+function renderStorefrontOptimistic() {
+  ensureStoreShape();
+  window.allProducts = window.STORE_DATA.products;
+  window.allCategories = window.STORE_DATA.categories;
+  persistCatalogToLocalStorage(window.STORE_DATA);
+  renderStore({ forceSidebar: true, forceRender: true });
+}
+
+function offerAdminSaveRetry(message) {
+  const text = `${message}\n\nНажмите «Сохранить» ещё раз, чтобы повторить отправку.`;
+  if (typeof tg?.showAlert === "function") {
+    tg.showAlert(text);
+  } else {
+    alert(text);
+  }
+}
+
+async function syncStorefrontAfterAdminSave(options = {}) {
+  await reloadStorefrontFromServer({
+    forceSidebar: true,
+    forceRender: options.forceRender !== false,
+  });
+  if (options.resetCategoryForm) {
+    document.getElementById("admin-category-form")?.reset();
+  }
+  if (options.resetProductForm) {
+    const addForm = document.getElementById("admin-product-form");
+    addForm?.reset();
+    const pcsBtn = addForm?.querySelector('[data-unit-type="pcs"]');
+    if (pcsBtn) window.setAdminUnitType("pcs", pcsBtn);
+  }
+  clearAdminFileInputs();
+  tg.HapticFeedback?.impactOccurred?.("light");
+}
+
+function setAdminSubmitButtonsLocked(selector, locked, busyLabel) {
+  document.querySelectorAll(selector).forEach((btn) => {
+    if (locked) {
+      if (btn.dataset.adminSubmitLabel == null) {
+        btn.dataset.adminSubmitLabel = btn.textContent || "";
+      }
+      btn.disabled = true;
+      btn.classList.add("admin-submit-btn--busy");
+      if (busyLabel) btn.textContent = busyLabel;
+    } else {
+      btn.disabled = false;
+      btn.classList.remove("admin-submit-btn--busy");
+      if (btn.dataset.adminSubmitLabel != null) {
+        btn.textContent = btn.dataset.adminSubmitLabel;
+        delete btn.dataset.adminSubmitLabel;
+      }
+    }
+  });
+}
+
+function lockAdminSubmitButtonsTemporarily(selector, busyLabel) {
+  setAdminSubmitButtonsLocked(selector, true, busyLabel);
+  window.setTimeout(() => {
+    setAdminSubmitButtonsLocked(selector, false);
+  }, ADMIN_SUBMIT_COOLDOWN_MS);
+}
+
+async function runAdminCatalogSaveAction({
+  getPending,
+  setPending,
+  buttonSelector,
+  busyLabel,
+  action,
+}) {
+  if (getPending()) return;
+  setPending(true);
+  lockAdminSubmitButtonsTemporarily(buttonSelector, busyLabel);
+  try {
+    await action();
+  } finally {
+    setPending(false);
   }
 }
 
@@ -7491,7 +8576,6 @@ window.updateWeightModalUI = function () {
       window._weightModalTriggerBtn = null;
 
       tg.HapticFeedback?.impactOccurred?.("light");
-      if (orderModalIsOpen()) window.redrawOrderItemsList();
     };
   }
 };
@@ -7863,19 +8947,64 @@ if (typeof resolveProductImageUrl === "function" && !window.originalProductImage
   };
 }
 
-function ensureActiveCategoryFilterGuard() {
-  if (!ACTIVE_CATEGORY_FILTER && window.STORE_DATA?.categories?.length > 0) {
-    scheduleNonCriticalTask(() => {
-      console.log(
-        "[BUG PROTECT] Фильтр категорий улетел в пустую строку! Восстанавливаем первую категорию."
-      );
-    });
-    ACTIVE_CATEGORY_FILTER = window.STORE_DATA.categories[0].id;
+const CATALOG_USER_INTERACTION_MS = 3500;
+
+function markCatalogUserInteraction() {
+  window._catalogUserInteractionUntil = Date.now() + CATALOG_USER_INTERACTION_MS;
+}
+
+function isCatalogUserInteractionBlocking() {
+  return Date.now() < (window._catalogUserInteractionUntil || 0);
+}
+
+/** null = все категории; только пустая строка считается ошибкой. */
+function normalizeActiveCategoryFilterValue() {
+  if (ACTIVE_CATEGORY_FILTER === "" || ACTIVE_CATEGORY_FILTER === "null") {
+    ACTIVE_CATEGORY_FILTER = null;
   }
 }
 
+function invalidateCategoryProductsCache() {
+  _cachedCategoriesProducts = null;
+  _cachedProducts = null;
+}
+
+/** Согласует фильтр с тем, что уже на экране (до layout-check / перерендера). */
+function syncActiveCategoryFilterFromCatalogDom() {
+  const container = document.getElementById("catalog-container");
+  if (!container) return;
+
+  const sections = container.querySelectorAll(
+    ".catalog-section[data-category-id]"
+  );
+  if (!sections.length) return;
+
+  if (sections.length === 1) {
+    const only = sections[0];
+    if (only.querySelector(".product-card[data-product-id]")) {
+      const id = only.getAttribute("data-category-id");
+      if (id != null && String(id) !== "") {
+        if (String(ACTIVE_CATEGORY_FILTER) !== String(id)) {
+          ACTIVE_CATEGORY_FILTER = id;
+          invalidateCategoryProductsCache();
+        }
+      }
+    }
+    return;
+  }
+
+  if (ACTIVE_CATEGORY_FILTER != null) {
+    ACTIVE_CATEGORY_FILTER = null;
+    invalidateCategoryProductsCache();
+  }
+}
+
+function ensureActiveCategoryFilterGuard() {
+  normalizeActiveCategoryFilterValue();
+}
+
 function getCategoriesToShow(cats) {
-  ensureActiveCategoryFilterGuard();
+  normalizeActiveCategoryFilterValue();
 
   if (ACTIVE_CATEGORY_FILTER == null) {
     return cats;
@@ -7961,8 +9090,9 @@ function bindCategorySidebarEvents() {
       ACTIVE_CATEGORY_FILTER = id;
     }
 
+    invalidateCategoryProductsCache();
     updateCategoryNavActiveState();
-    renderProductCatalog();
+    renderProductCatalog({ force: true });
   });
 
   _sidebarEventsBound = true;
@@ -8156,6 +9286,10 @@ function catalogLayoutNeedsFullRender() {
   const container = document.getElementById("catalog-container");
   if (!container) return true;
 
+  if (catalogDomHasProductCards()) {
+    syncActiveCategoryFilterFromCatalogDom();
+  }
+
   const cats = window.STORE_DATA?.categories || [];
   if (!cats.length) {
     return Boolean(
@@ -8210,6 +9344,20 @@ function refreshCatalogAfterServerSync(options = {}) {
   }
 
   ACTIVE_CATEGORY_FILTER = savedFilter;
+  normalizeActiveCategoryFilterValue();
+
+  if (
+    isCatalogUserInteractionBlocking() &&
+    catalogDomHasProductCards() &&
+    options.forceRender !== true
+  ) {
+    updateCategoryNavActiveState();
+    return;
+  }
+
+  if (catalogDomHasProductCards()) {
+    syncActiveCategoryFilterFromCatalogDom();
+  }
 
   const existingCards = new Map();
   document.querySelectorAll(".product-card[data-product-id]").forEach((card) => {
@@ -8217,43 +9365,63 @@ function refreshCatalogAfterServerSync(options = {}) {
   });
 
   const catsToShow = getCategoriesToShow(cats);
-  const currentProducts = getProductsForCategoriesCached(
+  let currentProducts = getProductsForCategoriesCached(
     catsToShow,
     window.STORE_DATA?.products || []
   );
 
-  let hasNewOrRemoved = Boolean(options.forceRender);
-
-  if (!hasNewOrRemoved && catalogLayoutNeedsFullRender()) {
-    hasNewOrRemoved = true;
-  }
-
-  if (!hasNewOrRemoved) {
-    if (currentProducts.length !== existingCards.size) {
-      hasNewOrRemoved = true;
-    } else {
-      for (const p of currentProducts) {
-        if (!existingCards.has(String(p.id))) {
-          hasNewOrRemoved = true;
-          break;
-        }
-      }
-      if (!hasNewOrRemoved) {
-        for (const id of existingCards.keys()) {
-          if (!currentProducts.some((p) => String(p.id) === id)) {
-            hasNewOrRemoved = true;
-            break;
-          }
-        }
-      }
+  if (existingCards.size > 0 && currentProducts.length === 0) {
+    syncActiveCategoryFilterFromCatalogDom();
+    const retryCats = getCategoriesToShow(cats);
+    currentProducts = getProductsForCategoriesCached(
+      retryCats,
+      window.STORE_DATA?.products || []
+    );
+    if (currentProducts.length === 0) {
+      console.warn(
+        "[RENDER] 0 товаров для текущего фильтра — витрина на экране не трогаем"
+      );
+      updateCategoryNavActiveState();
+      return;
     }
   }
 
+  const structuralChange =
+    options.forceRender === true ||
+    existingCards.size === 0 ||
+    storeHasStructuralCatalogChangesVsDom(existingCards);
+
+  let hasNewOrRemoved = structuralChange;
+
+  if (
+    !hasNewOrRemoved &&
+    catalogLayoutNeedsFullRender() &&
+    existingCards.size === 0
+  ) {
+    hasNewOrRemoved = true;
+  }
+
   if (hasNewOrRemoved) {
-    console.log(
-      "[RENDER] Состав товаров изменился, вызываем полный перерендер."
-    );
-    renderProductCatalog();
+    if (isCatalogStoreEmpty() && catalogDomHasProductCards()) {
+      console.warn(
+        "[RENDER] Пустой STORE_DATA — полный перерендер витрины пропущен"
+      );
+    } else if (
+      catalogDomHasProductCards() &&
+      countRenderableCatalogCards(
+        catsToShow,
+        window.STORE_DATA?.products || []
+      ) === 0
+    ) {
+      console.warn(
+        "[RENDER] Полный перерендер дал бы пустую витрину — пропуск"
+      );
+    } else {
+      console.log(
+        "[RENDER] Состав товаров изменился, вызываем полный перерендер."
+      );
+      renderProductCatalog();
+    }
   } else {
     console.log(
       "[RENDER] Точечное обновление данных без пересоздания DOM."
@@ -8264,6 +9432,7 @@ function refreshCatalogAfterServerSync(options = {}) {
         updateProductCard(product, existingCard);
       }
     });
+    revealVisibleCatalogImages();
   }
 
   updateCategoryNavActiveState();
@@ -8274,79 +9443,150 @@ function refreshCatalogAfterServerSync(options = {}) {
   }
 }
 
-function renderProductCatalog() {
-  if ((window._storefrontRenderLock || 0) > 0 || window._cartUiUpdateInProgress) {
+function scheduleActiveOrderCheckAfterCatalogLoad() {
+  if (
+    TRACKING_MODE ||
+    COURIER_DELIVERY_MODE ||
+    COURIER_FAST_START_MODE ||
+    window.COURIER_FAST_GO_ACTIVE
+  ) {
+    return;
+  }
+  scheduleNonCriticalTask(() => {
+    checkActiveUserOrder();
+  });
+}
+
+/** Откладывает полный рендер витрины, пока обновляется UI корзины (счётчики). */
+function runWhenCartUiIdle(fn, attempt = 0) {
+  if (window._cartUiUpdateInProgress) {
+    if (attempt < 50) {
+      window.setTimeout(() => runWhenCartUiIdle(fn, attempt + 1), 20);
+    } else {
+      fn();
+    }
+    return;
+  }
+  fn();
+}
+
+function renderProductCatalog(options = {}) {
+  if ((window._storefrontRenderLock || 0) > 0) {
     return;
   }
 
+  if (
+    options.force !== true &&
+    isCatalogUserInteractionBlocking() &&
+    catalogDomHasProductCards()
+  ) {
+    return;
+  }
+
+  const cartSnapshot = snapshotCartLines();
   const savedFilter = window.ACTIVE_CATEGORY_FILTER || ACTIVE_CATEGORY_FILTER;
+  const preserveExistingCards = catalogDomHasProductCards();
 
   try {
-  scheduleNonCriticalTask(() => {
-    console.log("Рендер каталога вызван! Текущий фильтр:", ACTIVE_CATEGORY_FILTER);
-  });
+    scheduleNonCriticalTask(() => {
+      console.log("Рендер каталога вызван! Текущий фильтр:", ACTIVE_CATEGORY_FILTER);
+    });
 
-  const cats = window.STORE_DATA.categories;
-  const productsAll = window.STORE_DATA.products;
-  const container = document.getElementById("catalog-container");
-  if (!container) return;
+    const cats = window.STORE_DATA.categories;
+    const productsAll = window.STORE_DATA.products;
+    const container = document.getElementById("catalog-container");
+    if (!container) return;
 
-  ensureActiveCategoryFilterGuard();
+    normalizeActiveCategoryFilterValue();
 
-  if (!cats.length) {
-    container.innerHTML =
-      '<p class="catalog-empty">Категории пока не настроены.</p>';
-    return;
-  }
+    if (!cats.length) {
+      if (preserveExistingCards) {
+        console.warn(
+          "[catalog] Нет категорий в STORE_DATA — сохраняем текущие карточки на экране"
+        );
+        return;
+      }
+      container.innerHTML =
+        '<p class="catalog-empty">Категории пока не настроены.</p>';
+      return;
+    }
 
-  const catsToShow = getCategoriesToShow(cats);
-  if (!catsToShow.length) {
-    container.innerHTML =
-      '<p class="catalog-empty">Категория не найдена.</p>';
-    return;
-  }
+    let catsToShow = getCategoriesToShow(cats);
+    if (!catsToShow.length && cats.length) {
+      ACTIVE_CATEGORY_FILTER = null;
+      catsToShow = getCategoriesToShow(cats);
+    }
+    if (!catsToShow.length) {
+      if (preserveExistingCards) {
+        console.warn(
+          "[catalog] Фильтр категории не совпал — сохраняем текущие карточки"
+        );
+        return;
+      }
+      container.innerHTML =
+        '<p class="catalog-empty">Категория не найдена.</p>';
+      return;
+    }
 
-  const filteredProducts = getProductsForCategoriesCached(
-    catsToShow,
-    productsAll
-  );
-  let catalogProductIndex = 0;
-  const sectionsHtml = catsToShow
-    .map((cat) => {
-      const catId = cat.id;
-      const title = cat.title || catId;
+    const filteredProducts = getProductsForCategoriesCached(
+      catsToShow,
+      productsAll
+    );
 
-      const rows = filteredProducts.filter(
-        (p) => String(p.category_id) === String(catId)
+    const renderableCardCount = countRenderableCatalogCards(
+      catsToShow,
+      productsAll
+    );
+    if (!renderableCardCount && preserveExistingCards) {
+      console.warn(
+        "[catalog] 0 карточек для фильтра/категорий — сохраняем DOM на экране"
       );
+      syncActiveCategoryFilterFromCatalogDom();
+      return;
+    }
 
-      const cardsHtml = rows
-        .map((p) => {
-          const cardHtml = renderProductCard(p, catalogProductIndex);
-          catalogProductIndex += 1;
-          return cardHtml;
-        })
-        .join("");
+    let catalogProductIndex = 0;
+    const sectionsHtml = catsToShow
+      .map((cat) => {
+        const catId = cat.id;
+        const title = cat.title || catId;
 
-      if (!cardsHtml) {
-        return `
+        const rows = filteredProducts.filter(
+          (p) => String(p.category_id) === String(catId)
+        );
+
+        const cardsHtml = rows
+          .map((p) => {
+            const cardHtml = renderProductCard(p, catalogProductIndex);
+            catalogProductIndex += 1;
+            return cardHtml;
+          })
+          .join("");
+
+        if (!cardsHtml) {
+          return `
         <section class="catalog-section" data-category-id="${escapeAttr(String(catId))}">
           <h2 class="catalog-section-title">${escapeHtml(String(title))}</h2>
           <p class="catalog-empty">Нет товаров.</p>
         </section>`;
-      }
+        }
 
-      return `
+        return `
         <section class="catalog-section" data-category-id="${escapeAttr(String(catId))}">
           <h2 class="catalog-section-title">${escapeHtml(String(title))}</h2>
           <div class="product-grid products-grid">${cardsHtml}</div>
         </section>`;
-    })
-    .join("");
+      })
+      .join("");
 
-  container.innerHTML = sectionsHtml;
-  syncProductGridsAdminClass();
+    container.innerHTML = sectionsHtml;
+    syncProductGridsAdminClass();
+    revealVisibleCatalogImages(container);
   } finally {
+    restoreCartLines(cartSnapshot);
+    refreshAllProductCardCounters();
+    revealVisibleCatalogImages();
+
     if (
       savedFilter !== undefined &&
       (window.ACTIVE_CATEGORY_FILTER !== savedFilter ||
@@ -8366,7 +9606,7 @@ function renderProductCatalog() {
 }
 
 function renderStore(options = {}) {
-  if ((window._storefrontRenderLock || 0) > 0 || window._cartUiUpdateInProgress) {
+  if ((window._storefrontRenderLock || 0) > 0) {
     return;
   }
 
@@ -8486,7 +9726,7 @@ function renderProductCard(product, catalogIndex = 0) {
   const imgBlock = imgUrl
     ? `<div class="product-img-wrapper">
         ${discountBadge}
-        <img class="product-img" src="${escapeAttr(imgUrl)}" loading="${loadingStrategy}" fetchpriority="${fetchPriority}" decoding="async" width="400" height="400" alt="${nameEsc}" onerror="this.src='${fallbackImg}'">
+        <img class="product-img" src="${escapeAttr(imgUrl)}" loading="${loadingStrategy}" fetchpriority="${fetchPriority}" decoding="async" width="400" height="400" alt="${nameEsc}" onload="this.classList.add('is-visible')" onerror="this.src='${fallbackImg}'">
       </div>`
     : `<div class="product-img-wrapper product-img-wrapper--empty" aria-hidden="true">${discountBadge}</div>`;
 
@@ -8960,12 +10200,9 @@ window.addToCart = function addToCart(productId, event) {
 
   tg.HapticFeedback?.impactOccurred?.("light");
   notifyCartLineChanged(product.id);
-  if (orderModalIsOpen()) {
-    window.redrawOrderItemsList();
-  }
 };
 
-window.updateCartUI = function () {
+function patchCartBarSummary() {
   const panel = document.getElementById("cart-checkout-panel");
   const bar = document.getElementById("cart-bar");
   const countEl = document.getElementById("cart-count");
@@ -8974,7 +10211,6 @@ window.updateCartUI = function () {
   if (!bar || !countEl || !totalEl) return;
 
   const cart = Array.isArray(window.CART) ? window.CART : [];
-
   const lineCount = cart.length;
   const promoDiscountAmount = getCartPromoDiscountAmount();
   const sum = getCartTotalWithPromo();
@@ -9007,6 +10243,10 @@ window.updateCartUI = function () {
       promoLineEl.textContent = "";
     }
   }
+}
+
+window.updateCartUI = function () {
+  patchCartBarSummary();
 };
 
 window.updateCartDisplay = window.updateCartUI;
@@ -9040,45 +10280,165 @@ function clearSelectedAddressCoords() {
   clearCheckoutClientCoordsStorage();
 }
 
+let googleMapsScriptLoadPromise = null;
+
+function isValidGoogleMapsApiKey(key) {
+  const normalized = String(key ?? "").trim();
+  if (!normalized) return false;
+  if (
+    normalized === "YOUR_KEY_HERE" ||
+    normalized === "__GOOGLE_MAPS_API_KEY__"
+  ) {
+    return false;
+  }
+  return true;
+}
+
+async function resolveGoogleMapsApiKey() {
+  const fromRuntime = window.__RUNTIME_CONFIG__?.googleMapsApiKey;
+  if (isValidGoogleMapsApiKey(fromRuntime)) {
+    return String(fromRuntime).trim();
+  }
+  try {
+    const res = await fetch("/api/config/public", { cache: "no-store" });
+    if (!res.ok) return "";
+    const data = await res.json();
+    const key = data?.googleMapsApiKey;
+    return isValidGoogleMapsApiKey(key) ? String(key).trim() : "";
+  } catch (err) {
+    console.warn("[maps] /api/config/public:", err);
+    return "";
+  }
+}
+
+/** Загружает Maps/Places JS; ключ только с сервера (GOOGLE_MAPS_API_KEY). */
+function loadGoogleMapsFromConfig() {
+  if (window.google?.maps?.places?.Autocomplete) {
+    return Promise.resolve(true);
+  }
+  if (!googleMapsScriptLoadPromise) {
+    googleMapsScriptLoadPromise = (async () => {
+      const apiKey = await resolveGoogleMapsApiKey();
+      if (!apiKey) {
+        console.warn(
+          "[maps] GOOGLE_MAPS_API_KEY не задан — Google Places отключён"
+        );
+        return false;
+      }
+      if (document.querySelector("script[data-google-maps-loader]")) {
+        return Boolean(window.google?.maps?.places);
+      }
+      return new Promise((resolve) => {
+        const script = document.createElement("script");
+        script.dataset.googleMapsLoader = "1";
+        script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(
+          apiKey
+        )}&libraries=places&language=uk&region=UA`;
+        script.async = true;
+        script.defer = true;
+        script.onload = () =>
+          resolve(Boolean(window.google?.maps?.places?.Autocomplete));
+        script.onerror = () => {
+          console.warn("[maps] не удалось загрузить Google Maps API");
+          resolve(false);
+        };
+        document.head.appendChild(script);
+      });
+    })();
+  }
+  return googleMapsScriptLoadPromise;
+}
+
+window.loadGoogleMapsFromConfig = loadGoogleMapsFromConfig;
+
 function isGooglePlacesReady() {
   return Boolean(window.google?.maps?.places?.Autocomplete);
 }
 
-/** Принудительные стили подсказок Google Places для WebView Telegram. */
-function applyPacSuggestionsWebViewStyles() {
-  const container = document.querySelector(".pac-container");
-  if (!container) return;
+const PAC_DROPDOWN_BG = "#1c222b";
+const PAC_DROPDOWN_BORDER = "#3a3a3c";
+const PAC_DROPDOWN_HOVER = "#2c2c2e";
 
-  container.style.setProperty("background-color", "#2c2c2e", "important");
-  container.style.setProperty("z-index", "999999", "important");
-  container.style.setProperty("display", "block", "important");
+/** Принудительные стили подсказок Google Places (перебивает inline от Google в WebView). */
+function forceApplyPacContainerStyles() {
+  document.querySelectorAll(".pac-container").forEach((container) => {
+    container.style.setProperty("background-color", PAC_DROPDOWN_BG, "important");
+    container.style.setProperty("background", PAC_DROPDOWN_BG, "important");
+    container.style.setProperty("border", `1px solid ${PAC_DROPDOWN_BORDER}`, "important");
+    container.style.setProperty("border-radius", "12px", "important");
+    container.style.setProperty("z-index", "999999", "important");
+    container.style.setProperty(
+      "box-shadow",
+      "0 4px 20px rgba(0, 0, 0, 0.5)",
+      "important"
+    );
+    container.style.setProperty("color", "#ffffff", "important");
+    container.style.setProperty("display", "block", "important");
+    container.style.setProperty("font-family", "inherit", "important");
+  });
 
   document.querySelectorAll(".pac-item").forEach((item) => {
+    item.style.setProperty("background-color", PAC_DROPDOWN_BG, "important");
+    item.style.setProperty("background", PAC_DROPDOWN_BG, "important");
     item.style.setProperty("color", "#ffffff", "important");
-    item.style.setProperty("background", "transparent", "important");
+    item.style.setProperty(
+      "border-bottom",
+      `1px solid ${PAC_DROPDOWN_BORDER}`,
+      "important"
+    );
+    item.style.setProperty("border-top", "none", "important");
+    item.style.setProperty("cursor", "pointer", "important");
+  });
+
+  document.querySelectorAll(
+    ".pac-item:hover, .pac-item-selected, .pac-item.pac-item-selected"
+  ).forEach((item) => {
+    item.style.setProperty("background-color", PAC_DROPDOWN_HOVER, "important");
+    item.style.setProperty("background", PAC_DROPDOWN_HOVER, "important");
+    item.style.setProperty("color", "#ffffff", "important");
   });
 
   document.querySelectorAll(".pac-item-query").forEach((query) => {
     query.style.setProperty("color", "#ffffff", "important");
+    query.style.setProperty("font-weight", "600", "important");
   });
 
   document.querySelectorAll(".pac-matched").forEach((matched) => {
     matched.style.setProperty("color", "#ff9800", "important");
+    matched.style.setProperty("font-weight", "bold", "important");
   });
+
+  document.querySelectorAll(".pac-item span").forEach((span) => {
+    if (span.classList.contains("pac-item-query")) return;
+    if (span.classList.contains("pac-matched")) return;
+    span.style.setProperty("color", "#8e8e93", "important");
+  });
+
+  document.querySelectorAll(".pac-icon, .pac-logo").forEach((el) => {
+    el.style.setProperty("display", "none", "important");
+  });
+}
+
+function applyPacSuggestionsWebViewStyles() {
+  forceApplyPacContainerStyles();
+}
+
+let _pacStyleRepaintTimer = null;
+
+function scheduleForceApplyPacStyles(delayMs = 100) {
+  window.clearTimeout(_pacStyleRepaintTimer);
+  _pacStyleRepaintTimer = window.setTimeout(() => {
+    _pacStyleRepaintTimer = null;
+    forceApplyPacContainerStyles();
+  }, delayMs);
 }
 
 function bindPacWebViewStyleHack(input) {
   if (!input || input.dataset.pacStyleHackBound === "1") return;
   input.dataset.pacStyleHackBound = "1";
 
-  const repaintPac = () => {
-    window.setTimeout(applyPacSuggestionsWebViewStyles, 100);
-  };
-
-  input.addEventListener("input", repaintPac);
-  input.addEventListener("focus", () => {
-    window.setTimeout(applyPacSuggestionsWebViewStyles, 300);
-  });
+  input.addEventListener("input", () => scheduleForceApplyPacStyles(100));
+  input.addEventListener("focus", () => scheduleForceApplyPacStyles(100));
 }
 
 function persistCheckoutAddressSelection(address, lat, lng) {
@@ -9268,43 +10628,51 @@ function initGooglePlacesAutocomplete(input) {
   autocomplete.setOptions({ strictBounds: false });
   autocomplete.setBounds(DNIPRO_PLACES_BOUNDS);
 
-  const forceApplyStyles = () => {
-    setTimeout(() => {
-      const containers = document.querySelectorAll(".pac-container");
-      containers.forEach((container) => {
-        container.style.backgroundColor = "#1c222b";
-        container.style.background = "#1c222b";
-        container.style.border = "1px solid #3a3a3c";
-        container.style.borderRadius = "12px";
-        container.style.zIndex = "999999";
-      });
-      document.querySelectorAll(".pac-item").forEach((item) => {
-        item.style.backgroundColor = "#1c222b";
-        item.style.color = "#ffffff";
-      });
-      document.querySelectorAll(".pac-item-query").forEach((query) => {
-        query.style.color = "#ffffff";
-      });
-      document.querySelectorAll(".pac-matched").forEach((matched) => {
-        matched.style.color = "#ff9800";
-      });
-    }, 50);
-  };
+  const forceApplyStyles = () => scheduleForceApplyPacStyles(100);
 
   const startPacStyleObserver = () => {
     if (input._pacStyleObserver) return;
-    const observer = new MutationObserver(() => {
-      const containers = document.querySelectorAll(".pac-container");
-      containers.forEach((container) => {
+    const observer = new MutationObserver((mutations) => {
+      let needsRepaint = false;
+      for (const mutation of mutations) {
+        if (mutation.type !== "childList") continue;
+        for (const node of mutation.addedNodes) {
+          if (!(node instanceof Element)) continue;
+          if (
+            node.classList?.contains("pac-container") ||
+            node.querySelector?.(".pac-container, .pac-item")
+          ) {
+            needsRepaint = true;
+            break;
+          }
+        }
+        if (needsRepaint) break;
+      }
+      if (!needsRepaint && !document.querySelector(".pac-container")) return;
+
+      document.querySelectorAll(".pac-container").forEach((container) => {
+        const bg = container.style.backgroundColor || "";
         if (
-          !container.style.backgroundColor ||
-          container.style.backgroundColor === "rgb(255, 255, 255)"
+          !bg ||
+          bg === "white" ||
+          bg === "#fff" ||
+          bg === "#ffffff" ||
+          bg === "rgb(255, 255, 255)"
         ) {
-          forceApplyStyles();
+          needsRepaint = true;
         }
       });
+
+      if (needsRepaint || document.querySelector(".pac-container")) {
+        scheduleForceApplyPacStyles(50);
+      }
     });
-    observer.observe(document.body, { childList: true, subtree: true });
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["style", "class"],
+    });
     input._pacStyleObserver = observer;
   };
 
@@ -9420,11 +10788,16 @@ function initAddressAutocomplete() {
 
   bindPacWebViewStyleHack(addressInput);
 
-  if (initGooglePlacesAutocomplete(addressInput)) {
-    return;
-  }
-
-  waitForGooglePlacesAutocomplete(addressInput);
+  loadGoogleMapsFromConfig().then((mapsReady) => {
+    if (!mapsReady) {
+      initNominatimAddressAutocomplete(addressInput);
+      return;
+    }
+    if (initGooglePlacesAutocomplete(addressInput)) {
+      return;
+    }
+    waitForGooglePlacesAutocomplete(addressInput);
+  });
 }
 
 function orderModalIsOpen() {
@@ -9613,47 +10986,150 @@ function refreshAllProductCardCounters() {
   });
 }
 
-function notifyCartLineChanged(productId) {
+function cssEscapeAttrValue(value) {
+  const raw = String(value ?? "");
+  if (typeof CSS !== "undefined" && typeof CSS.escape === "function") {
+    return CSS.escape(raw);
+  }
+  return raw.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+function patchProductCardCartControls(productId) {
+  const card = findProductCardElement(productId);
+  if (!card) return;
+
+  const product = getStoreProductById(productId);
+  const count = getCartLineQuantity(productId);
+  const displayText = formatProductCardCountDisplay(product, count);
+  const countSpan = card.querySelector(".product-count-value");
+  if (countSpan) countSpan.textContent = displayText;
+
+  const addBtn = card.querySelector(".btn-add-plus");
+  const qtyWrap = card.querySelector(".product-cart-qty");
+  if (addBtn) addBtn.hidden = count > 0;
+  if (qtyWrap) qtyWrap.hidden = count <= 0;
+
+  const plusBtn = card.querySelector(".btn-plus");
+  if (plusBtn && product && !isWeightItemProduct(product)) {
+    const maxAvailable = getProductStockQuantity(product);
+    const isAtLimit = count >= maxAvailable;
+    plusBtn.disabled = isAtLimit;
+    plusBtn.classList.toggle("order-qty-btn--disabled", isAtLimit);
+  }
+}
+
+function buildOrderItemRowHtml(item) {
+  const idEsc = jsIdForOnclickSingleQuotes(item.id);
+  const q = Number(item.quantity ?? item.count) || 0;
+  const p = Number(item.price) || 0;
+  const lineSum = getCartLineTotal(item);
+  const nm = escapeHtml(String(item.name ?? ""));
+  const priceLabel = isWeightProduct(item)
+    ? `${formatMoney(p)} ₴/100г`
+    : `${formatMoney(p)} ₴`;
+  const qtyLabel = isWeightProduct(item)
+    ? formatWeightDisplayText(q)
+    : `${q} шт`;
+  const qtyDisplay = isWeightProduct(item)
+    ? formatWeightDisplayText(q)
+    : String(q);
+  const plusDisabled = isPiecePlusButtonDisabled(item.id);
+  const plusBtnClass = plusDisabled
+    ? "order-qty-btn order-qty-btn--disabled"
+    : "order-qty-btn";
+  const plusDisabledAttr = plusDisabled ? " disabled" : "";
+  const idAttr = escapeHtml(String(item.id ?? ""));
+
+  return `
+      <div class="order-item-row" role="listitem" data-order-item-id="${idAttr}">
+        <div class="order-item-info">
+          <p class="order-item-name">${nm}</p>
+          <p class="order-item-meta">${priceLabel} · ${qtyLabel} — ${formatMoney(lineSum)} ₴</p>
+        </div>
+        <div class="order-item-controls">
+          <button type="button" class="order-qty-btn" onclick="window.changeQuantity('${idEsc}', -1)" aria-label="Меньше">-</button>
+          <span class="order-qty-value">${escapeHtml(qtyDisplay)}</span>
+          <button type="button" class="${plusBtnClass}"${plusDisabledAttr} onclick="window.changeQuantity('${idEsc}', 1)" aria-label="Больше"${plusDisabled ? ' aria-disabled="true"' : ""}>+</button>
+          <button type="button" class="order-item-remove order-item-remove--icon" onclick="window.removeFromCart('${idEsc}')" aria-label="Удалить">🗑️</button>
+        </div>
+      </div>`;
+}
+
+function patchOrderModalLine(productId) {
+  if (!orderModalIsOpen()) return;
+
+  const list = document.getElementById("order-items-list");
+  if (!list) return;
+
+  const id = String(productId ?? "").trim();
+  if (!id) {
+    window.redrawOrderItemsList();
+    return;
+  }
+
+  const line = (Array.isArray(window.CART) ? window.CART : []).find(
+    (x) => String(x.id) === id
+  );
+  const row = list.querySelector(
+    `[data-order-item-id="${cssEscapeAttrValue(id)}"]`
+  );
+
+  if (!line) {
+    row?.remove();
+    if (!window.CART?.length) {
+      list.innerHTML =
+        '<p style="text-align:center;opacity:.85;font-size:0.88rem;padding:0.6rem 0">Корзина пуста</p>';
+    }
+    return;
+  }
+
+  const html = buildOrderItemRowHtml(line);
+  if (row) {
+    row.outerHTML = html;
+    return;
+  }
+
+  const emptyMsg = list.querySelector("p");
+  if (emptyMsg && !list.querySelector(".order-item-row")) {
+    list.innerHTML = html;
+    return;
+  }
+
+  list.insertAdjacentHTML("beforeend", html);
+}
+
+function notifyCartLineChanged(productId, options = {}) {
+  markCatalogUserInteraction();
   withCartOnlyUiUpdate(() => {
-    window.updateCartUI();
+    patchCartBarSummary();
+
     if (productId != null && productId !== "") {
       window.updateProductCardCounter(productId);
+      patchProductCardCartControls(productId);
+      revealVisibleCatalogImages();
     }
 
-    if (productId != null && productId !== "") {
-      const card = findProductCardElement(productId);
-      if (card) {
-        const product = getStoreProductById(productId);
-        const count = getCartLineQuantity(productId);
-        const displayText = formatProductCardCountDisplay(product, count);
-        const countSpan = card.querySelector(".product-count-value");
-        if (countSpan) countSpan.textContent = displayText;
+    if (options.fullOrderList === true && orderModalIsOpen()) {
+      window.redrawOrderItemsList();
+      return;
+    }
 
-        const addBtn = card.querySelector(".btn-add-plus");
-        const qtyWrap = card.querySelector(".product-cart-qty");
-        if (addBtn) addBtn.hidden = count > 0;
-        if (qtyWrap) qtyWrap.hidden = count <= 0;
-
-        const plusBtn = card.querySelector(".btn-plus");
-        if (plusBtn && product && !isWeightItemProduct(product)) {
-          const maxAvailable = getProductStockQuantity(product);
-          const isAtLimit = count >= maxAvailable;
-          plusBtn.disabled = isAtLimit;
-          plusBtn.classList.toggle("order-qty-btn--disabled", isAtLimit);
-        }
+    if (orderModalIsOpen()) {
+      if (productId != null && productId !== "") {
+        patchOrderModalLine(productId);
+      } else {
+        window.redrawOrderItemsList();
       }
     }
   });
 }
 
-/** Блокирует renderStore/renderProductCatalog во время обновления корзины. */
+/** Короткая блокировка: только счётчики корзины, без блокировки витрины. */
 function withCartOnlyUiUpdate(fn) {
   window._cartUiUpdateInProgress = true;
-  window._storefrontRenderLock = (window._storefrontRenderLock || 0) + 1;
   try {
     return fn();
   } finally {
-    window._storefrontRenderLock = Math.max(0, (window._storefrontRenderLock || 1) - 1);
     window.setTimeout(() => {
       window._cartUiUpdateInProgress = false;
     }, 0);
@@ -9674,42 +11150,7 @@ window.redrawOrderItemsList = function () {
     return;
   }
 
-  list.innerHTML = window.CART
-    .map((item) => {
-      const idEsc = jsIdForOnclickSingleQuotes(item.id);
-      const q = Number(item.quantity ?? item.count) || 0;
-      const p = Number(item.price) || 0;
-      const lineSum = getCartLineTotal(item);
-      const nm = escapeHtml(String(item.name ?? ""));
-      const priceLabel = isWeightProduct(item)
-        ? `${formatMoney(p)} ₴/100г`
-        : `${formatMoney(p)} ₴`;
-      const qtyLabel = isWeightProduct(item)
-        ? formatWeightDisplayText(q)
-        : `${q} шт`;
-      const qtyDisplay = isWeightProduct(item)
-        ? formatWeightDisplayText(q)
-        : String(q);
-      const plusDisabled = isPiecePlusButtonDisabled(item.id);
-      const plusBtnClass = plusDisabled
-        ? "order-qty-btn order-qty-btn--disabled"
-        : "order-qty-btn";
-      const plusDisabledAttr = plusDisabled ? " disabled" : "";
-      return `
-      <div class="order-item-row" role="listitem">
-        <div class="order-item-info">
-          <p class="order-item-name">${nm}</p>
-          <p class="order-item-meta">${priceLabel} · ${qtyLabel} — ${formatMoney(lineSum)} ₴</p>
-        </div>
-        <div class="order-item-controls">
-          <button type="button" class="order-qty-btn" onclick="window.changeQuantity('${idEsc}', -1)" aria-label="Меньше">-</button>
-          <span class="order-qty-value">${escapeHtml(qtyDisplay)}</span>
-          <button type="button" class="${plusBtnClass}"${plusDisabledAttr} onclick="window.changeQuantity('${idEsc}', 1)" aria-label="Больше"${plusDisabled ? ' aria-disabled="true"' : ""}>+</button>
-          <button type="button" class="order-item-remove order-item-remove--icon" onclick="window.removeFromCart('${idEsc}')" aria-label="Удалить">🗑️</button>
-        </div>
-      </div>`;
-    })
-    .join("");
+  list.innerHTML = window.CART.map((item) => buildOrderItemRowHtml(item)).join("");
 };
 
 window.changeQuantity = function changeQuantity(productId, delta, event) {
@@ -9754,20 +11195,17 @@ window.changeQuantity = function changeQuantity(productId, delta, event) {
 
   tg.HapticFeedback?.impactOccurred?.("light");
   notifyCartLineChanged(id);
-  if (orderModalIsOpen()) {
-    window.redrawOrderItemsList();
-  }
 };
 
 window.removeFromCart = function (productId) {
   window.CART = window.CART.filter((x) => String(x.id) !== String(productId));
   tg.HapticFeedback?.impactOccurred?.("light");
-  notifyCartLineChanged(productId);
   if (!window.CART.length && orderModalIsOpen()) {
+    patchCartBarSummary();
     window.closeOrderModal();
     return;
   }
-  if (orderModalIsOpen()) window.redrawOrderItemsList();
+  notifyCartLineChanged(productId);
 };
 
 const CHECKOUT_LS = {
@@ -10007,7 +11445,29 @@ function trackingFromActiveOrderApi(order) {
   };
 }
 
-async function checkActiveUserOrder() {
+let _activeOrderCheckRetryTimer = null;
+
+function scheduleActiveOrderCheckRetry(delayMs = 600) {
+  if (_activeOrderCheckRetryTimer != null) return;
+  _activeOrderCheckRetryTimer = window.setTimeout(() => {
+    _activeOrderCheckRetryTimer = null;
+    checkActiveUserOrder({ maxWaitMs: 4000 });
+  }, delayMs);
+}
+
+/** Восстановление активного заказа с сервера (не зависит от localStorage). */
+function scheduleActiveOrderRecovery() {
+  const run = () => {
+    checkActiveUserOrder({ maxWaitMs: 6000 });
+  };
+  if (typeof tg?.ready === "function") {
+    tg.ready(run);
+  } else {
+    run();
+  }
+}
+
+async function checkActiveUserOrder(options = {}) {
   if (
     TRACKING_MODE ||
     COURIER_DELIVERY_MODE ||
@@ -10017,11 +11477,13 @@ async function checkActiveUserOrder() {
     return;
   }
 
-  const userId = getTelegramUserId();
+  const userId =
+    options.userId != null && String(options.userId).trim()
+      ? String(options.userId).trim()
+      : await waitForTelegramUserId(options.maxWaitMs ?? 5000);
 
   if (!userId) {
-    setActiveOrderId(null);
-    hideActiveOrderFloatingButton();
+    scheduleActiveOrderCheckRetry();
     return;
   }
 
@@ -10145,10 +11607,15 @@ async function checkActiveUserOrder() {
         hideActiveOrderFloatingButton();
       }
     }
+
+    if (isStorefrontVisible()) {
+      updateActiveOrderFloatingButton(status);
+    }
   } catch (err) {
     console.error("checkActiveUserOrder:", err);
-    document.getElementById("active-order-floating-button").style.display =
-      "none";
+    const orderBtn = document.getElementById("active-order-floating-button");
+    if (orderBtn) orderBtn.style.display = "none";
+    scheduleActiveOrderCheckRetry(1200);
   }
 }
 
@@ -10887,12 +12354,8 @@ window.applyClientPromocode = function () {
           statusDiv.innerText = `Промокод успешно применен! Скидка ${window.activePromoDiscount}%`;
         }
 
-        if (typeof window.updateCartDisplay === "function") {
-          window.updateCartDisplay();
-        } else if (typeof window.updateCartUI === "function") {
-          window.updateCartUI();
-        }
-        if (orderModalIsOpen()) window.redrawOrderItemsList();
+        patchCartBarSummary();
+        notifyCartLineChanged(null, { fullOrderList: true });
       } else {
         window.activePromoCode = "";
         window.activePromoDiscount = 0;
@@ -10901,11 +12364,8 @@ window.applyClientPromocode = function () {
           statusDiv.style.color = "#dc3545";
           statusDiv.innerText = data.error || "Промокод не найден";
         }
-        if (typeof window.updateCartDisplay === "function") {
-          window.updateCartDisplay();
-        } else if (typeof window.updateCartUI === "function") {
-          window.updateCartUI();
-        }
+        patchCartBarSummary();
+        notifyCartLineChanged(null, { fullOrderList: true });
       }
     })
     .catch((err) => {
@@ -11435,11 +12895,26 @@ function setMainBannerSrc(path, forceCacheBust) {
   bindBannerFadeIn(img);
 }
 
+function applyCachedBannerPath() {
+  try {
+    const path = localStorage.getItem(BANNER_LS_KEY);
+    if (path && String(path).trim()) {
+      setMainBannerSrc(path, false);
+      return true;
+    }
+  } catch {
+    /* ignore */
+  }
+  return false;
+}
+
 async function initBanner(options = {}) {
   const force = options.force === true;
   if (bannerLoadDone && !force) {
     return;
   }
+
+  applyCachedBannerPath();
 
   try {
     const res = await fetch("/api/get_banner");
@@ -11447,6 +12922,11 @@ async function initBanner(options = {}) {
     const path = data.path || "";
     if (path) {
       setMainBannerSrc(path, false);
+      try {
+        localStorage.setItem(BANNER_LS_KEY, path);
+      } catch {
+        /* ignore */
+      }
     }
     bannerLoadDone = true;
   } catch (e) {
@@ -12268,155 +13748,220 @@ async function reloadStorefrontFromServer(options = {}) {
 }
 
 async function refreshCatalogAfterSuccess(options = {}) {
-  if (options.resetCategoryForm) {
-    document.getElementById("admin-category-form")?.reset();
-  }
-  if (options.resetProductForm) {
-    const addForm = document.getElementById("admin-product-form");
-    addForm?.reset();
-    const pcsBtn = addForm?.querySelector('[data-unit-type="pcs"]');
-    if (pcsBtn) window.setAdminUnitType("pcs", pcsBtn);
-  }
-  clearAdminFileInputs();
-  await reloadStorefrontFromServer({
-    forceSidebar: true,
-    forceRender: options.forceRender === true,
-  });
-  tg.HapticFeedback?.impactOccurred?.("light");
+  await syncStorefrontAfterAdminSave(options);
 }
 
 async function addCategory() {
   if (!IS_ADMIN) return;
 
-  const title =
-    document.getElementById("admin-new-category-title")?.value?.trim() ?? "";
-  const file = document.getElementById("category-file")?.files?.[0] ?? null;
+  await runAdminCatalogSaveAction({
+    getPending: () => adminCategorySavePending,
+    setPending: (v) => {
+      adminCategorySavePending = v;
+    },
+    buttonSelector: "#admin-add-category-btn",
+    busyLabel: "Сохранение…",
+    action: async () => {
+      const title =
+        document.getElementById("admin-new-category-title")?.value?.trim() ?? "";
+      const file = document.getElementById("category-file")?.files?.[0] ?? null;
 
-  if (!title) {
-    tg.showAlert("Укажите название категории.");
-    return;
-  }
-  if (!file || !(file instanceof File)) {
-    tg.showAlert("Выберите файл изображения категории.");
-    return;
-  }
-
-  const userId = getTelegramUserId();
-  if (!userId) {
-    tg.showAlert("Откройте приложение в Telegram или войдите как пользователь.");
-    return;
-  }
-
-  const fd = new FormData();
-  fd.append("user_id", userId);
-  fd.append("operation", OP_ADD_CATEGORY);
-  fd.append("category_title", title);
-  fd.append("image", file, file.name);
-
-  try {
-    const result = await postSaveProductsRequest(() =>
-      fetch("/api/save_products", {
-        method: "POST",
-        body: fd,
-      })
-    );
-
-    if (result.skipped) return;
-
-    if (!result.ok) {
-      if (!result.rateLimited) {
-        tg.showAlert(result.data?.error || "Не удалось сохранить категорию.");
+      if (!title) {
+        tg.showAlert("Укажите название категории.");
+        return;
       }
-      await reloadStorefrontFromServer({ forceSidebar: true, forceRender: true });
-      return;
-    }
+      if (!file || !(file instanceof File)) {
+        tg.showAlert("Выберите файл изображения категории.");
+        return;
+      }
 
-    await refreshCatalogAfterSuccess({
-      resetCategoryForm: true,
-      forceRender: true,
-    });
-  } catch (e) {
-    console.error(e);
-    tg.showAlert("Ошибка сети при сохранении.");
-    await reloadStorefrontFromServer({ forceSidebar: true, forceRender: true });
-  }
+      const userId = getTelegramUserId();
+      if (!userId) {
+        tg.showAlert("Откройте приложение в Telegram или войдите как пользователь.");
+        return;
+      }
+
+      const optimisticId = makeOptimisticCategoryId();
+      const previewUrl = URL.createObjectURL(file);
+      const rollback = applyOptimisticCategoryEntry({
+        id: optimisticId,
+        title,
+        image: previewUrl,
+      });
+
+      renderStorefrontOptimistic();
+      document.getElementById("admin-category-form")?.reset();
+      clearAdminFileInputs();
+
+      const fd = new FormData();
+      fd.append("user_id", userId);
+      fd.append("operation", OP_ADD_CATEGORY);
+      fd.append("category_title", title);
+      fd.append("image", file, file.name);
+
+      try {
+        const result = await enqueueSaveProductsRequest(() =>
+          fetch("/api/save_products", {
+            method: "POST",
+            body: fd,
+          })
+        );
+
+        if (!result.ok) {
+          rollback();
+          renderStorefrontOptimistic();
+          URL.revokeObjectURL(previewUrl);
+          if (!result.rateLimited) {
+            offerAdminSaveRetry(
+              result.data?.error || "Не удалось сохранить категорию на сервере."
+            );
+          }
+          scheduleNonCriticalTask(() =>
+            reloadStorefrontFromServer({ forceSidebar: true, forceRender: true })
+          );
+          return;
+        }
+
+        URL.revokeObjectURL(previewUrl);
+        scheduleNonCriticalTask(() =>
+          syncStorefrontAfterAdminSave({
+            resetCategoryForm: false,
+            forceRender: true,
+          })
+        );
+        tg.HapticFeedback?.impactOccurred?.("light");
+      } catch (e) {
+        console.error(e);
+        rollback();
+        renderStorefrontOptimistic();
+        URL.revokeObjectURL(previewUrl);
+        offerAdminSaveRetry("Ошибка сети при сохранении категории.");
+        scheduleNonCriticalTask(() =>
+          reloadStorefrontFromServer({ forceSidebar: true, forceRender: true })
+        );
+      }
+    },
+  });
 }
 
 async function addNewProduct() {
   if (!IS_ADMIN) return;
 
-  ensureStoreShape();
-  const categoryId = document.getElementById("admin-category")?.value;
-  const name = document.getElementById("admin-name")?.value?.trim();
-  const priceRaw = document.getElementById("admin-price")?.value;
-  const file = document.getElementById("product-file")?.files?.[0] ?? null;
+  await runAdminCatalogSaveAction({
+    getPending: () => adminProductSavePending,
+    setPending: (v) => {
+      adminProductSavePending = v;
+    },
+    buttonSelector: "#admin-add-product-btn",
+    busyLabel: "Сохранение…",
+    action: async () => {
+      ensureStoreShape();
+      const categoryId = document.getElementById("admin-category")?.value;
+      const name = document.getElementById("admin-name")?.value?.trim();
+      const priceRaw = document.getElementById("admin-price")?.value;
+      const file = document.getElementById("product-file")?.files?.[0] ?? null;
 
-  if (!name) {
-    tg.showAlert("Укажите название товара.");
-    return;
-  }
-
-  const price = Number(priceRaw);
-  if (Number.isNaN(price) || price < 0) {
-    tg.showAlert("Укажите корректную цену.");
-    return;
-  }
-
-  if (
-    !categoryId ||
-    !window.STORE_DATA.categories.some((c) => String(c.id) === String(categoryId))
-  ) {
-    tg.showAlert("Выберите категорию.");
-    return;
-  }
-
-  if (!file || !(file instanceof File)) {
-    tg.showAlert("Выберите файл изображения товара.");
-    return;
-  }
-
-  const userId = getTelegramUserId();
-  if (!userId) {
-    tg.showAlert("Откройте приложение в Telegram или войдите как пользователь.");
-    return;
-  }
-
-  const fd = new FormData();
-  fd.append("user_id", userId);
-  fd.append("operation", OP_ADD_PRODUCT);
-  fd.append("category_id", String(categoryId));
-  fd.append("name", name);
-  fd.append("price", String(price));
-  fd.append("unit_type", normalizeUnitType(window.currentAdminUnitType || "pcs"));
-  fd.append("image", file, file.name);
-
-  try {
-    const result = await postSaveProductsRequest(() =>
-      fetch("/api/save_products", {
-        method: "POST",
-        body: fd,
-      })
-    );
-
-    if (result.skipped) return;
-
-    if (!result.ok) {
-      if (!result.rateLimited) {
-        tg.showAlert(result.data?.error || "Не удалось сохранить товар.");
+      if (!name) {
+        tg.showAlert("Укажите название товара.");
+        return;
       }
-      await reloadStorefrontFromServer({ forceSidebar: true, forceRender: true });
-      return;
-    }
 
-    await refreshCatalogAfterSuccess({
-      resetProductForm: true,
-      forceRender: true,
-    });
-  } catch (e) {
-    console.error(e);
-    tg.showAlert("Ошибка сети при сохранении.");
-    await reloadStorefrontFromServer({ forceSidebar: true, forceRender: true });
-  }
+      const price = Number(priceRaw);
+      if (Number.isNaN(price) || price < 0) {
+        tg.showAlert("Укажите корректную цену.");
+        return;
+      }
+
+      if (
+        !categoryId ||
+        !window.STORE_DATA.categories.some((c) => String(c.id) === String(categoryId))
+      ) {
+        tg.showAlert("Выберите категорию.");
+        return;
+      }
+
+      if (!file || !(file instanceof File)) {
+        tg.showAlert("Выберите файл изображения товара.");
+        return;
+      }
+
+      const userId = getTelegramUserId();
+      if (!userId) {
+        tg.showAlert("Откройте приложение в Telegram или войдите как пользователь.");
+        return;
+      }
+
+      const unitType = normalizeUnitType(window.currentAdminUnitType || "pcs");
+      const optimisticId = makeOptimisticProductId();
+      const previewUrl = URL.createObjectURL(file);
+      const rollback = applyOptimisticProductEntry({
+        id: optimisticId,
+        categoryId: String(categoryId),
+        name,
+        price,
+        unitType,
+        image: previewUrl,
+      });
+
+      renderStorefrontOptimistic();
+      const addForm = document.getElementById("admin-product-form");
+      addForm?.reset();
+      const pcsBtn = addForm?.querySelector('[data-unit-type="pcs"]');
+      if (pcsBtn) window.setAdminUnitType("pcs", pcsBtn);
+      clearAdminFileInputs();
+
+      const fd = new FormData();
+      fd.append("user_id", userId);
+      fd.append("operation", OP_ADD_PRODUCT);
+      fd.append("category_id", String(categoryId));
+      fd.append("name", name);
+      fd.append("price", String(price));
+      fd.append("unit_type", unitType);
+      fd.append("image", file, file.name);
+
+      try {
+        const result = await enqueueSaveProductsRequest(() =>
+          fetch("/api/save_products", {
+            method: "POST",
+            body: fd,
+          })
+        );
+
+        if (!result.ok) {
+          rollback();
+          renderStorefrontOptimistic();
+          URL.revokeObjectURL(previewUrl);
+          if (!result.rateLimited) {
+            offerAdminSaveRetry(
+              result.data?.error || "Не удалось сохранить товар на сервере."
+            );
+          }
+          scheduleNonCriticalTask(() =>
+            reloadStorefrontFromServer({ forceSidebar: true, forceRender: true })
+          );
+          return;
+        }
+
+        URL.revokeObjectURL(previewUrl);
+        scheduleNonCriticalTask(() =>
+          syncStorefrontAfterAdminSave({
+            resetProductForm: false,
+            forceRender: true,
+          })
+        );
+        tg.HapticFeedback?.impactOccurred?.("light");
+      } catch (e) {
+        console.error(e);
+        rollback();
+        renderStorefrontOptimistic();
+        URL.revokeObjectURL(previewUrl);
+        offerAdminSaveRetry("Ошибка сети при сохранении товара.");
+        scheduleNonCriticalTask(() =>
+          reloadStorefrontFromServer({ forceSidebar: true, forceRender: true })
+        );
+      }
+    },
+  });
 }
 
 /** Только админка (удаление категории и т.п.). Корзина сюда не пишет — без /api/save_products. */
@@ -12437,15 +13982,13 @@ async function saveProductsToServer() {
   };
 
   try {
-    const result = await postSaveProductsRequest(() =>
+    const result = await enqueueSaveProductsRequest(() =>
       fetch("/api/save_products", {
         method: "POST",
         headers: { "Content-Type": "application/json; charset=utf-8" },
         body: JSON.stringify(bodyObj),
       })
     );
-
-    if (result.skipped) return;
 
     if (!result.ok) {
       if (!result.rateLimited) {
@@ -13850,6 +15393,7 @@ function bootShopAfterTelegramReady() {
   shopTelegramUiReady = true;
 
   tg.expand?.();
+  loadGoogleMapsFromConfig();
   initCartAndOrderUi();
   window.updateCartUI();
   scheduleNonCriticalTask(() => {
@@ -13892,34 +15436,23 @@ function bootShopApp() {
   showAdminTriggerImmediately();
   ensureCatalogLayoutVisible();
   setupCatalogClickDelegation();
+
+  const hasInstantCatalog = hydrateStoreFromBootstrap();
+  if (hasInstantCatalog) {
+    renderStoreFromCurrentData();
+    scheduleCatalogImageWarmup();
+  }
+
+  initBanner();
   scheduleNonCriticalTask(() => {
-    initBanner();
     initMapBannerAdminInput();
   });
-  loadCatalogFromServer();
+  loadCatalogFromServer({
+    background: hasInstantCatalog,
+    forceRender: !hasInstantCatalog,
+  });
 
-  const activeOrderId = getActiveOrderId();
-  if (activeOrderId) {
-    fetch(
-      `/api/order/check_cancelled?order_id=${encodeURIComponent(activeOrderId)}&user_id=${encodeURIComponent(getTelegramUserId())}`
-    )
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.cancelled === true) {
-          clearActiveOrderSnapshot();
-          setActiveOrderId(null);
-          hideActiveOrderFloatingButton();
-          checkActiveUserOrder();
-        } else {
-          checkActiveUserOrder();
-        }
-      })
-      .catch(() => {
-        checkActiveUserOrder();
-      });
-  } else {
-    checkActiveUserOrder();
-  }
+  scheduleActiveOrderRecovery();
 
   if (typeof tg?.ready === "function") {
     tg.ready(bootShopAfterTelegramReady);
@@ -13943,6 +15476,27 @@ document.addEventListener("DOMContentLoaded", () => {
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+
+    <script>
+      (function () {
+        var hash = location.hash || "";
+        var hashGo = hash.match(/^#\/?go\/([^&?/]+)/i);
+        if (hashGo && hashGo[1]) {
+          location.replace("/go/" + encodeURIComponent(hashGo[1]));
+          return;
+        }
+        var hashQuery = hash.indexOf("?") >= 0 ? hash.split("?")[1] : "";
+        var searchQuery = (location.search || "").replace(/^\?/, "");
+        var combined = [hashQuery, searchQuery].filter(Boolean).join("&");
+        var params = new URLSearchParams(combined);
+        if (params.get("courier_fast_go") === "1") {
+          var oid = params.get("order_id");
+          if (oid) {
+            location.replace("/go/" + encodeURIComponent(oid));
+          }
+        }
+      })();
+    </script>
 
     <link rel="preload" as="image" href="uploads/banner.jpg" fetchpriority="high">
 
@@ -13975,11 +15529,19 @@ document.addEventListener("DOMContentLoaded", () => {
     </style>
     <title>Халяль Маркет</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script>
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", function () {
+          navigator.serviceWorker.register("/sw.js").catch(function (err) {
+            console.warn("[SW] registration failed:", err);
+          });
+        });
+      }
+    </script>
+    <!--INLINE_INITIAL_PRODUCTS-->
+    <!--RUNTIME_CONFIG-->
     <link rel="preconnect" href="https://maps.googleapis.com" />
-    <script
-      src="https://maps.googleapis.com/maps/api/js?key=__GOOGLE_MAPS_API_KEY__&libraries=places&language=uk&region=UA"
-      defer
-    ></script>
+    <!-- Google Maps API: ключ из GOOGLE_MAPS_API_KEY (.env) через loadGoogleMapsFromConfig() -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -14558,12 +16120,27 @@ document.addEventListener("DOMContentLoaded", () => {
         background: rgba(255, 255, 255, 0.07) !important;
         border: 1px solid rgba(255, 255, 255, 0.1) !important;
         color: #fff !important;
-        transition: all 0.2s ease !important;
+        will-change: transform;
+        transition:
+          transform 0.18s ease,
+          opacity 0.18s ease,
+          background 0.2s ease !important;
       }
 
       #admin-panel .admin-submit-btn:hover,
       #admin-panel .admin-submit-btn:active {
         background: rgba(255, 255, 255, 0.16) !important;
+      }
+
+      #admin-panel .admin-submit-btn:active:not(:disabled) {
+        transform: scale(0.98);
+      }
+
+      #admin-panel .admin-submit-btn--busy,
+      #admin-panel .admin-submit-btn:disabled {
+        opacity: 0.55;
+        pointer-events: none;
+        transform: none;
       }
 
       .admin-couriers-section {
@@ -15184,8 +16761,12 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       #catalog-container .product-img {
-        opacity: 0;
+        opacity: 1;
         animation: storefront-fade-in 0.4s ease-out 0.08s both;
+      }
+
+      #catalog-container .product-img.is-visible {
+        opacity: 1;
       }
 
       @media (prefers-reduced-motion: reduce) {
@@ -15339,9 +16920,22 @@ document.addEventListener("DOMContentLoaded", () => {
 
       .product-card .btn-add-plus,
       .product-card .order-qty-btn,
-      .product-card .add-to-cart-btn {
+      .product-card .add-to-cart-btn,
+      .order-item-row .order-qty-btn,
+      .order-item-remove {
         visibility: visible !important;
         flex-shrink: 0;
+        will-change: transform;
+        transition:
+          transform 0.15s ease,
+          opacity 0.15s ease,
+          background 0.15s ease;
+      }
+
+      .product-card .btn-add-plus:active:not(:disabled),
+      .product-card .order-qty-btn:active:not(:disabled),
+      .order-item-row .order-qty-btn:active:not(:disabled) {
+        transform: scale(0.92);
       }
 
       .product-card .order-qty-btn {
@@ -15877,7 +17471,11 @@ document.addEventListener("DOMContentLoaded", () => {
         font-weight: 600;
         line-height: 1.25;
         cursor: pointer;
-        transition: all 0.2s ease !important;
+        will-change: transform;
+        transition:
+          transform 0.18s ease,
+          opacity 0.2s ease,
+          background 0.2s ease !important;
         -webkit-tap-highlight-color: transparent;
         box-sizing: border-box;
       }
@@ -15885,6 +17483,10 @@ document.addEventListener("DOMContentLoaded", () => {
       .cart-bar:hover,
       .cart-bar:active {
         background: rgba(255, 255, 255, 0.16) !important;
+      }
+
+      .cart-bar:active {
+        transform: scale(0.98);
       }
 
       .cart-bar.cart-bar--visible {
@@ -16660,6 +18262,7 @@ document.addEventListener("DOMContentLoaded", () => {
           </div>
           <button
             type="button"
+            id="admin-add-category-btn"
             class="admin-submit-btn"
             onclick="addCategory()"
           >
@@ -16728,6 +18331,7 @@ document.addEventListener("DOMContentLoaded", () => {
           </div>
           <button
             type="button"
+            id="admin-add-product-btn"
             class="admin-submit-btn"
             onclick="addNewProduct()"
           >
@@ -17180,11 +18784,13 @@ document.addEventListener("DOMContentLoaded", () => {
       </div>
     </div>
 
-    <script src="app.js?v=14.0.0" defer></script>
+    <script src="app.js?v=14.6.0" defer></script>
 
     <style>
       /* ⭐ КРИТИЧЕСКИ ВАЖНО: Форсированные стили Google Autocomplete для Telegram WebView */
-      .pac-container {
+      .pac-container,
+      div.pac-container,
+      body .pac-container {
         background-color: #1c222b !important;
         background: #1c222b !important;
         border: 1px solid #3a3a3c !important;
@@ -17192,24 +18798,30 @@ document.addEventListener("DOMContentLoaded", () => {
         z-index: 999999 !important;
         box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5) !important;
         font-family: inherit !important;
+        color: #ffffff !important;
         margin-top: 5px !important;
         left: auto !important;
         right: auto !important;
         width: auto !important;
         min-width: 250px !important;
       }
-      .pac-item {
+      .pac-item,
+      .pac-container .pac-item {
         padding: 12px 16px !important;
         border-top: none !important;
-        border-bottom: 1px solid #2c2c2e !important;
+        border-bottom: 1px solid #3a3a3c !important;
         cursor: pointer !important;
+        background-color: #1c222b !important;
         background: #1c222b !important;
         color: #ffffff !important;
       }
       .pac-item:hover,
-      .pac-item-selected {
+      .pac-item-selected,
+      .pac-item.pac-item-selected,
+      .pac-container .pac-item:hover {
         background-color: #2c2c2e !important;
         background: #2c2c2e !important;
+        color: #ffffff !important;
       }
       /* Название улицы и НОМЕР ДОМА */
       .pac-item-query {
@@ -17409,6 +19021,215 @@ body::after {
   font-size: 0.95rem;
   font-weight: 600;
 }
+
+
+
+================================================================================
+ФАЙЛ: frontend\sw.js
+==============================
+
+/**
+ * Cache-first (stale-while-revalidate) для Telegram WebView.
+ * Витрина, API каталога/баннера и изображения — из кеша, обновление в фоне.
+ */
+const CACHE_VERSION = "halal-market-v14.6.0";
+const SHELL_CACHE = `halal-shell-${CACHE_VERSION}`;
+const DATA_CACHE = `halal-data-${CACHE_VERSION}`;
+const IMAGE_CACHE = `halal-images-${CACHE_VERSION}`;
+
+const PRECACHE_SHELL = ["./", "style.css", "app.js", "sw.js"];
+
+function isSameOrigin(request) {
+  try {
+    return new URL(request.url).origin === self.location.origin;
+  } catch {
+    return false;
+  }
+}
+
+function isApiDataPath(pathname) {
+  return pathname === "/api/products" || pathname === "/api/get_banner";
+}
+
+function isShellPath(pathname) {
+  return (
+    pathname === "/" ||
+    pathname === "/index.html" ||
+    pathname.endsWith(".css") ||
+    pathname.endsWith(".js") ||
+    pathname === "/sw.js"
+  );
+}
+
+function isImagePath(pathname) {
+  return pathname.startsWith("/uploads/");
+}
+
+function isProductsApiRequest(request) {
+  try {
+    return new URL(request.url).pathname === "/api/products";
+  } catch {
+    return false;
+  }
+}
+
+async function isValidProductsCatalogResponse(response) {
+  if (!response || !response.ok) return false;
+  try {
+    const data = await response.clone().json();
+    const cats = data?.categories;
+    const prods = data?.products;
+    return (
+      (Array.isArray(cats) && cats.length > 0) ||
+      (Array.isArray(prods) && prods.length > 0)
+    );
+  } catch {
+    return false;
+  }
+}
+
+async function matchCachedRequest(request, cacheName) {
+  const cache = await caches.open(cacheName);
+  let hit = await cache.match(request);
+  if (hit) return hit;
+
+  const url = new URL(request.url);
+  if (url.search) {
+    const bareUrl = new URL(url.pathname, url.origin);
+    hit = await cache.match(bareUrl.href);
+    if (hit) return hit;
+    hit = await cache.match(bareUrl.pathname);
+    if (hit) return hit;
+  }
+  return null;
+}
+
+async function putInCache(request, response, cacheName) {
+  if (!response || !response.ok) return;
+
+  if (cacheName === DATA_CACHE && isProductsApiRequest(request)) {
+    const valid = await isValidProductsCatalogResponse(response);
+    if (!valid) {
+      try {
+        const cache = await caches.open(cacheName);
+        await cache.delete(request);
+        const url = new URL(request.url);
+        await cache.delete(new URL(url.pathname, url.origin).href);
+      } catch {
+        /* ignore */
+      }
+      return;
+    }
+  }
+
+  const cache = await caches.open(cacheName);
+  try {
+    await cache.put(request, response);
+  } catch {
+    /* quota / opaque */
+  }
+}
+
+async function resolveCachedEntry(request, cacheName) {
+  const cached = await matchCachedRequest(request, cacheName);
+  if (!cached) return null;
+
+  if (cacheName === DATA_CACHE && isProductsApiRequest(request)) {
+    const valid = await isValidProductsCatalogResponse(cached);
+    if (!valid) {
+      try {
+        const cache = await caches.open(cacheName);
+        await cache.delete(request);
+      } catch {
+        /* ignore */
+      }
+      return null;
+    }
+  }
+
+  return cached;
+}
+
+async function cacheFirstStaleWhileRevalidate(request, cacheName) {
+  const cached = await resolveCachedEntry(request, cacheName);
+
+  const networkPromise = fetch(request)
+    .then((networkResponse) => {
+      putInCache(request, networkResponse.clone(), cacheName);
+      return networkResponse;
+    })
+    .catch(() => null);
+
+  if (cached) {
+    networkPromise.catch(() => {});
+    return cached;
+  }
+
+  const network = await networkPromise;
+  if (network) return network;
+  return new Response("", { status: 504, statusText: "Offline" });
+}
+
+self.addEventListener("install", (event) => {
+  event.waitUntil(
+    (async () => {
+      const cache = await caches.open(SHELL_CACHE);
+      await Promise.all(
+        PRECACHE_SHELL.map(async (url) => {
+          try {
+            await cache.add(new Request(url, { cache: "reload" }));
+          } catch {
+            /* отдельный файл может быть недоступен при install */
+          }
+        })
+      );
+      await caches.open(DATA_CACHE);
+      await caches.open(IMAGE_CACHE);
+    })()
+  );
+  self.skipWaiting();
+});
+
+self.addEventListener("activate", (event) => {
+  event.waitUntil(
+    (async () => {
+      const names = await caches.keys();
+      await Promise.all(
+        names
+          .filter(
+            (name) =>
+              name.startsWith("halal-") &&
+              name !== SHELL_CACHE &&
+              name !== DATA_CACHE &&
+              name !== IMAGE_CACHE
+          )
+          .map((name) => caches.delete(name))
+      );
+      await self.clients.claim();
+    })()
+  );
+});
+
+self.addEventListener("fetch", (event) => {
+  if (event.request.method !== "GET" || !isSameOrigin(event.request)) {
+    return;
+  }
+
+  const { pathname } = new URL(event.request.url);
+  let cacheName = null;
+
+  if (isApiDataPath(pathname)) {
+    cacheName = DATA_CACHE;
+  } else if (isImagePath(pathname)) {
+    cacheName = IMAGE_CACHE;
+  } else if (isShellPath(pathname)) {
+    cacheName = SHELL_CACHE;
+  }
+
+  if (!cacheName) return;
+
+  event.respondWith(cacheFirstStaleWhileRevalidate(event.request, cacheName));
+});
 
 
 

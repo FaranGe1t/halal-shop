@@ -173,3 +173,52 @@ def deduct_piece_stock_for_cart(
         changed = True
 
     return changed
+
+
+def normalize_discount_value(raw) -> int:
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        value = 0
+    return max(0, min(99, value))
+
+
+def normalize_unit_type(raw) -> str:
+    value = str(raw or "pcs").strip().lower()
+    return "weight" if value == "weight" else "pcs"
+
+
+def normalize_product(product: object) -> dict[str, Any]:
+    if not isinstance(product, dict):
+        return {}
+    out = dict(product)
+    out["discount"] = normalize_discount_value(out.get("discount", 0))
+    out["unit_type"] = normalize_unit_type(out.get("unit_type", "pcs"))
+    if out["unit_type"] == "weight":
+        out["is_weight_item"] = True
+        if str(out.get("price_per_unit", "")).strip().lower() == "kg":
+            try:
+                out["price"] = round(float(out.get("price") or 0) / 10.0, 2)
+            except (TypeError, ValueError):
+                pass
+        out["price_per_unit"] = "100g"
+    else:
+        out["is_weight_item"] = False
+        out["price_per_unit"] = "pcs"
+    return sync_product_stock_fields(out)
+
+
+def normalize_products_payload(data: object) -> dict:
+    if not isinstance(data, dict):
+        return {"categories": [], "products": []}
+    cats = data.get("categories")
+    prods = data.get("products")
+    products: list[dict] = []
+    if isinstance(prods, list):
+        for item in prods:
+            if isinstance(item, dict):
+                products.append(normalize_product(item))
+    return {
+        "categories": cats if isinstance(cats, list) else [],
+        "products": products,
+    }
