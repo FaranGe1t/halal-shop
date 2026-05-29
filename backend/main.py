@@ -86,9 +86,17 @@ def persist_products_document(document: dict) -> None:
     """Сохраняет каталог в БД (вместо JSON)."""
     from .db_products import persist_products_document_to_db
 
+    products = document.get("products") or []
+    categories = document.get("categories") or []
+    print(
+        f"persist_products_document: {len(categories)} categories, "
+        f"{len(products)} products",
+        flush=True,
+    )
     persist_products_document_to_db(document)
     if _products_catalog_cache_invalidate is not None:
         _products_catalog_cache_invalidate()
+    print("persist_products_document: OK", flush=True)
 
 
 def apply_piece_stock_deduction_for_order(cart_lines: list[dict]) -> bool:
@@ -4415,11 +4423,14 @@ def create_app(
     @app.post("/api/save_products")
     @limiter.limit("20 per minute")
     def api_save_products():
+        print("=== POST /api/save_products ===", flush=True)
         if not admin_normalized:
+            print("save_products: ADMIN_ID not configured", flush=True)
             return jsonify({"ok": False, "error": "ADMIN_ID is not configured"}), 403
 
         if request.content_type and "multipart/form-data" in request.content_type:
             op = (request.form.get("operation") or "").strip()
+            print(f"save_products: multipart operation={op!r}", flush=True)
 
             if op == "add_category":
                 uid = str(request.form.get("user_id", "")).strip()
@@ -4448,7 +4459,9 @@ def create_app(
 
             if op == "add_product":
                 uid = str(request.form.get("user_id", "")).strip()
+                print(f"save_products add_product: user_id={uid!r}", flush=True)
                 if uid != admin_normalized:
+                    print("save_products add_product: Forbidden (user_id)", flush=True)
                     return jsonify({"ok": False, "error": "Forbidden"}), 403
                 category_id = str(request.form.get("category_id", "")).strip()
                 name = (request.form.get("name") or "").strip()
@@ -4456,18 +4469,25 @@ def create_app(
                 try:
                     price = float(price_raw)
                 except (TypeError, ValueError):
+                    print(f"save_products add_product: Invalid price {price_raw!r}", flush=True)
                     return jsonify({"ok": False, "error": "Invalid price"}), 400
                 if price < 0:
                     return jsonify({"ok": False, "error": "Invalid price"}), 400
                 if not name:
+                    print("save_products add_product: Missing name", flush=True)
                     return jsonify({"ok": False, "error": "Missing product name"}), 400
                 if not category_id:
+                    print("save_products add_product: Missing category_id", flush=True)
                     return jsonify({"ok": False, "error": "Missing category_id"}), 400
 
                 document = _load_document_from_disk()
                 if not any(
                     str(c.get("id")) == category_id for c in document["categories"]
                 ):
+                    print(
+                        f"save_products add_product: Unknown category {category_id!r}",
+                        flush=True,
+                    )
                     return jsonify({"ok": False, "error": "Unknown category"}), 400
 
                 fs = request.files.get("image") or request.files.get("file")
@@ -4491,10 +4511,20 @@ def create_app(
                 document["products"].append(
                     sync_product_stock_fields(new_product.to_dict())
                 )
+                print(
+                    f"save_products add_product: persisting id={prod_id!r} "
+                    f"name={name!r} image={image_url!r}",
+                    flush=True,
+                )
                 try:
                     _persist_document(document)
                 except OSError as exc:
+                    print(f"save_products add_product: OSError {exc!r}", flush=True)
                     return jsonify({"ok": False, "error": str(exc)}), 500
+                except Exception as exc:
+                    print(f"save_products add_product: ERROR {exc!r}", flush=True)
+                    raise
+                print(f"save_products add_product: OK id={prod_id!r}", flush=True)
                 return jsonify({"ok": True})
 
             raw_json = request.form.get("payload") or request.form.get("data") or ""
@@ -4514,6 +4544,7 @@ def create_app(
             files_map = None
 
         if str(payload.get("user_id", "")).strip() != admin_normalized:
+            print("save_products: Forbidden (JSON user_id)", flush=True)
             return jsonify({"ok": False, "error": "Forbidden"}), 403
 
         categories = payload.get("categories")
@@ -4524,12 +4555,17 @@ def create_app(
             return jsonify({"ok": False, "error": "Expected `products` array"}), 400
 
         document = {"categories": categories, "products": products}
+        print(
+            f"save_products JSON: {len(categories)} categories, {len(products)} products",
+            flush=True,
+        )
 
         if files_map:
             _apply_uploads_to_document(document, files_map)
 
         persist_products_document_to_db(document)
         cache.delete("products_list")
+        print("save_products JSON: OK", flush=True)
         return jsonify({"ok": True})
 
     @app.post("/api/admin/toggle_stock")

@@ -3,10 +3,18 @@
 """
 
 import json
+import os
 import sqlite3
 from pathlib import Path
 
 from .product_model import normalize_products_payload, sync_product_stock_fields
+
+
+def _db_log(message: str) -> None:
+    try:
+        print(message, flush=True)
+    except UnicodeEncodeError:
+        print(message.encode("ascii", "replace").decode("ascii"), flush=True)
 
 
 def get_db_connection():
@@ -14,7 +22,8 @@ def get_db_connection():
     from .config import get_database_path
 
     db_path = get_database_path()
-    print(f"🔗 Подключение к БД: {db_path}")
+    if os.getenv("CATALOG_DB_DEBUG", "").strip().lower() in ("1", "true", "yes"):
+        _db_log(f"Подключение к БД: {db_path}")
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     return conn
@@ -64,6 +73,10 @@ def save_category_to_db(category):
 
 def save_product_to_db(product):
     """Сохраняет товар в БД."""
+    _db_log(
+        f"save_product_to_db: id={product.get('id')!r} "
+        f"name={product.get('name')!r} cat={product.get('category_id')!r}"
+    )
     conn = get_db_connection()
     try:
         conn.execute(
@@ -143,12 +156,15 @@ def sync_catalog_from_document(document: dict) -> None:
     - удаляет отсутствующие
     """
     normalized = normalize_products_payload(document)
+    new_cats = {cat["id"]: cat for cat in normalized.get("categories", [])}
+    new_prods = {prod["id"]: prod for prod in normalized.get("products", [])}
+    _db_log(
+        f"sync_catalog_from_document: start "
+        f"({len(new_cats)} categories, {len(new_prods)} products)"
+    )
 
     current_cats = {c["id"]: c for c in load_categories_from_db()}
     current_prods = {p["id"]: p for p in load_products_from_db()}
-
-    new_cats = {cat["id"]: cat for cat in normalized.get("categories", [])}
-    new_prods = {prod["id"]: prod for prod in normalized.get("products", [])}
 
     for cat_id in set(current_cats.keys()) - set(new_cats.keys()):
         delete_category_from_db(cat_id)
@@ -162,13 +178,20 @@ def sync_catalog_from_document(document: dict) -> None:
     for prod in new_prods.values():
         save_product_to_db(sync_product_stock_fields(prod))
 
-    print(
-        f"✅ Синхронизация завершена: {len(new_cats)} категорий, {len(new_prods)} товаров"
+    _db_log(
+        f"sync_catalog_from_document: done "
+        f"({len(new_cats)} categories, {len(new_prods)} products)"
     )
 
 
 def persist_products_document_to_db(document: dict) -> None:
     """Сохраняет каталог в БД с синхронизацией удалений."""
+    products = document.get("products") or []
+    categories = document.get("categories") or []
+    _db_log(
+        f"persist_products_document_to_db: "
+        f"{len(categories)} categories, {len(products)} products"
+    )
     sync_catalog_from_document(document)
 
 
