@@ -4423,7 +4423,18 @@ def create_app(
     @app.post("/api/save_products")
     @limiter.limit("20 per minute")
     def api_save_products():
-        print("=== POST /api/save_products ===", flush=True)
+        print("=" * 50, flush=True)
+        print("🚀 ВЫЗОВ API /api/save_products", flush=True)
+        print(f"Content-Type: {request.content_type}", flush=True)
+        print(
+            f"Form data keys: {list(request.form.keys()) if request.form else 'None'}",
+            flush=True,
+        )
+        print(
+            f"Files keys: {list(request.files.keys()) if request.files else 'None'}",
+            flush=True,
+        )
+        print("=" * 50, flush=True)
         if not admin_normalized:
             print("save_products: ADMIN_ID not configured", flush=True)
             return jsonify({"ok": False, "error": "ADMIN_ID is not configured"}), 403
