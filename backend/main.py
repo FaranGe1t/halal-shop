@@ -37,7 +37,6 @@ from werkzeug.utils import secure_filename
 from PIL import Image
 
 from .config import (
-    DATABASE_PATH,
     ENV_FILE,
     PROJECT_ROOT,
     PUBLIC_URL,
@@ -248,7 +247,7 @@ COURIER_ROUTE_VIEW_STATUSES = frozenset(
 )
 
 _backend_dir = Path(__file__).resolve().parent
-db_path = DATABASE_PATH
+db_path = get_database_path()
 products_catalog_path = get_products_path()
 
 

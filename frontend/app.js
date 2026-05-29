@@ -2121,7 +2121,7 @@ function renderProductCatalog(options = {}) {
     normalizeActiveCategoryFilterValue();
 
     if (!cats.length) {
-      if (preserveExistingCards) {
+      if (preserveExistingCards && options.force !== true) {
         console.warn(
           "[catalog] Нет категорий в STORE_DATA — сохраняем текущие карточки на экране"
         );
@@ -2138,7 +2138,7 @@ function renderProductCatalog(options = {}) {
       catsToShow = getCategoriesToShow(cats);
     }
     if (!catsToShow.length) {
-      if (preserveExistingCards) {
+      if (preserveExistingCards && options.force !== true) {
         console.warn(
           "[catalog] Фильтр категории не совпал — сохраняем текущие карточки"
         );
@@ -2158,7 +2158,7 @@ function renderProductCatalog(options = {}) {
       catsToShow,
       productsAll
     );
-    if (!renderableCardCount && preserveExistingCards) {
+    if (!renderableCardCount && preserveExistingCards && options.force !== true) {
       const existingCards = document.querySelectorAll(
         ".product-card[data-product-id]"
       );
@@ -3723,6 +3723,13 @@ function patchOrderModalLine(productId) {
   list.insertAdjacentHTML("beforeend", html);
 }
 
+function restoreCatalogAfterCartUpdate() {
+  ACTIVE_CATEGORY_FILTER = null;
+  invalidateCategoryProductsCache();
+  renderProductCatalog({ force: true });
+  console.log("🔄 Витрина восстановлена после добавления в корзину");
+}
+
 function notifyCartLineChanged(productId, options = {}) {
   markCatalogUserInteraction();
   withCartOnlyUiUpdate(() => {
@@ -3751,8 +3758,7 @@ function notifyCartLineChanged(productId, options = {}) {
   setTimeout(() => {
     const container = document.getElementById("catalog-container");
     if (container && !container.querySelector(".product-card")) {
-      console.log("🔄 Восстанавливаем витрину");
-      renderProductCatalog({ force: true });
+      restoreCatalogAfterCartUpdate();
     }
   }, 50);
 }

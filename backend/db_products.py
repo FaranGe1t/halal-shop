@@ -6,13 +6,16 @@ import json
 import sqlite3
 from pathlib import Path
 
-from .config import DATABASE_PATH
 from .product_model import normalize_products_payload, sync_product_stock_fields
 
 
 def get_db_connection():
     """Возвращает соединение с БД."""
-    conn = sqlite3.connect(DATABASE_PATH)
+    from .config import get_database_path
+
+    db_path = get_database_path()
+    print(f"🔗 Подключение к БД: {db_path}")
+    conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -171,9 +174,17 @@ def persist_products_document_to_db(document: dict) -> None:
 
 def migrate_json_to_db() -> None:
     """Переносит данные из products.json в БД (только если БД пустая)."""
+    from .config import get_database_path
+
+    db_path = get_database_path()
+    print(f"📁 migrate_json_to_db: {db_path}")
+
     conn = get_db_connection()
     try:
-        count = conn.execute("SELECT COUNT(*) FROM products").fetchone()[0]
+        cursor = conn.execute("SELECT COUNT(*) FROM products")
+        count = cursor.fetchone()[0]
+        print(f"🔍 В БД найдено товаров: {count}")
+
         if count > 0:
             print(f"ℹ️ В БД уже есть {count} товаров, миграция пропущена")
             return
