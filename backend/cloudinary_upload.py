@@ -1,18 +1,42 @@
 import os
+import sys
 
 import cloudinary
 import cloudinary.api
 import cloudinary.uploader
 
 
+def _cloudinary_log(message: str) -> None:
+    try:
+        print(message, flush=True)
+    except UnicodeEncodeError:
+        print(message.encode("ascii", "replace").decode("ascii"), flush=True)
+
+
 def init_cloudinary():
     """Инициализация Cloudinary из переменных окружения."""
+    cloud_name = os.getenv("CLOUDINARY_CLOUD_NAME", "").strip()
+    api_key = os.getenv("CLOUDINARY_API_KEY", "").strip()
+    api_secret = os.getenv("CLOUDINARY_API_SECRET", "").strip()
+
+    _cloudinary_log(
+        f"🔍 Cloudinary check: cloud_name={cloud_name}, "
+        f"api_key={api_key[:5] if api_key else 'None'}..., "
+        f"has_secret={bool(api_secret)}"
+    )
+
+    if not cloud_name or not api_key or not api_secret:
+        _cloudinary_log("⚠️ Cloudinary не настроен: отсутствуют переменные окружения")
+        return False
+
     cloudinary.config(
-        cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME"),
-        api_key=os.getenv("CLOUDINARY_API_KEY"),
-        api_secret=os.getenv("CLOUDINARY_API_SECRET"),
+        cloud_name=cloud_name,
+        api_key=api_key,
+        api_secret=api_secret,
         secure=True,
     )
+    _cloudinary_log(f"✅ Cloudinary инициализирован (cloud_name: {cloud_name})")
+    return True
 
 
 def upload_product_image(image_file, product_id):

@@ -58,12 +58,9 @@ from .product_model import (
     sync_product_stock_fields,
 )
 from .cloudinary_upload import (
-    init_cloudinary,
     upload_category_image,
     upload_product_image,
 )
-
-init_cloudinary()
 
 _products_catalog_cache_invalidate = None
 
@@ -4239,6 +4236,11 @@ def create_app(
     admin_normalized = str(admin_id).strip()
 
     uploads_dir.mkdir(parents=True, exist_ok=True)
+
+    # Инициализация Cloudinary
+    from .cloudinary_upload import init_cloudinary
+
+    init_cloudinary()
 
     app = Flask(__name__)
 
