@@ -3996,11 +3996,51 @@ const ACTIVE_STOREFRONT_ORDER_STATUSES = new Set([
   "preparing",
   "processing",
   "active",
+  "new",
 ]);
+
+const TERMINAL_ORDER_STATUSES = new Set(["completed", "cancelled", "deleted"]);
 
 function normalizeActiveOrderStatus(status) {
   const s = String(status || "").toLowerCase();
   return s === "delivering" ? "delivery" : s;
+}
+
+function isTerminalOrderStatus(status) {
+  return TERMINAL_ORDER_STATUSES.has(normalizeActiveOrderStatus(status));
+}
+
+function resolveActiveOrderId() {
+  return (
+    getActiveOrderId() ||
+    window._activeOrderTracking?.orderId ||
+    loadActiveOrderSnapshot()?.orderId ||
+    null
+  );
+}
+
+function bootstrapActiveOrderFloatingButtonFromCache() {
+  const orderId = resolveActiveOrderId();
+  if (!orderId) return;
+
+  const snapshot = loadActiveOrderSnapshot();
+  if (!window._activeOrderTracking?.orderId) {
+    window._activeOrderTracking = {
+      orderId: String(orderId),
+      isDelivery: Boolean(snapshot?.isDelivery),
+      clientLat: snapshot?.clientLat ?? null,
+      clientLon: snapshot?.clientLon ?? null,
+      shopLat: snapshot?.shopLat ?? SHOP_TRACK_LAT,
+      shopLon: snapshot?.shopLon ?? SHOP_TRACK_LON,
+      totalPrice: snapshot?.totalPrice ?? null,
+      lastStatus: snapshot?.lastStatus || "",
+      canTrackCourier: Boolean(snapshot?.canTrackCourier),
+    };
+  }
+
+  if (isStorefrontVisible() && !isTerminalOrderStatus(snapshot?.lastStatus)) {
+    updateActiveOrderFloatingButton(snapshot?.lastStatus);
+  }
 }
 
 function setActiveOrderId(orderId) {
@@ -4088,6 +4128,7 @@ function scheduleActiveOrderCheckRetry(delayMs = 600) {
 /** Восстановление активного заказа с сервера (не зависит от localStorage). */
 function scheduleActiveOrderRecovery() {
   const run = () => {
+    bootstrapActiveOrderFloatingButtonFromCache();
     checkActiveUserOrder({ maxWaitMs: 6000 });
   };
   if (typeof tg?.ready === "function") {
@@ -4170,7 +4211,16 @@ async function checkActiveUserOrder(options = {}) {
 
     const orderId = String(data.order_id || "");
     const status = normalizeActiveOrderStatus(data.status);
-    if (!isActiveStorefrontOrderStatus(status)) {
+    if (
+      !isActiveStorefrontOrderStatus(status) &&
+      !isTerminalOrderStatus(status)
+    ) {
+      console.warn(
+        "checkActiveUserOrder: неизвестный активный статус, продолжаем:",
+        status || "(пусто)"
+      );
+    }
+    if (isTerminalOrderStatus(status)) {
       setActiveOrderId(null);
       clearActiveOrderSnapshot();
       document.getElementById("active-order-floating-button").style.display =
@@ -4292,11 +4342,16 @@ function clearActiveOrderSnapshot() {
 }
 
 function hasActiveOrderInProgress() {
-  const orderId = getActiveOrderId();
+  const orderId = resolveActiveOrderId();
+  if (!orderId) return false;
+
   const tracking = window._activeOrderTracking || loadActiveOrderSnapshot();
-  if (!orderId && !tracking?.orderId) return false;
-  const status = tracking?.lastStatus || "";
-  return isActiveStorefrontOrderStatus(status);
+  const status = normalizeActiveOrderStatus(tracking?.lastStatus || "");
+  if (isTerminalOrderStatus(status)) return false;
+  if (isActiveStorefrontOrderStatus(status)) return true;
+
+  // Заказ есть, статус ещё не подтянулся с сервера — не сбрасываем.
+  return true;
 }
 
 function activeOrderFloatingButtonLabel(status) {
@@ -4324,10 +4379,11 @@ function updateActiveOrderFloatingButton(status) {
   }
 
   const tracking = window._activeOrderTracking || loadActiveOrderSnapshot();
-  const orderStatus = status || tracking?.lastStatus || "";
-  const completed = String(orderStatus).toLowerCase() === "completed";
+  const orderStatus = normalizeActiveOrderStatus(
+    status || tracking?.lastStatus || ""
+  );
 
-  if (!tracking?.orderId || completed) {
+  if (!tracking?.orderId || isTerminalOrderStatus(orderStatus)) {
     btn.style.display = "none";
     return;
   }

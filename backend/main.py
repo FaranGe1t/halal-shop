@@ -950,6 +950,7 @@ UNFINISHED_ORDER_STATUSES = (
     "delivery",
     "processing",
     "active",
+    "new",
 )
 
 COURIER_POOL_ORDER_STATUSES = (
