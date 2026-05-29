@@ -1,0 +1,38 @@
+services:
+  # Веб-сервер (Flask)
+  - type: web
+    name: halal-shop-web
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn backend.main:app
+    envVars:
+      - key: BOT_TOKEN
+        sync: false
+      - key: ADMIN_ID
+        sync: false
+      - key: ADMIN_RECEIPTS_PASSWORD
+        sync: false
+      - key: RENDER
+        value: "true"
+    disk:
+      name: halal-data
+      mountPath: /opt/render/project/src/backend
+      sizeGB: 1
+
+  # Worker для бота (обрабатывает кнопки, геолокацию и т.д.)
+  - type: worker
+    name: halal-shop-bot
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python backend/bot_worker.py
+    envVars:
+      - key: BOT_TOKEN
+        sync: false
+      - key: ADMIN_ID
+        sync: false
+      - key: ADMIN_RECEIPTS_PASSWORD
+        sync: false
+      - key: PUBLIC_URL
+        sync: false
+      - key: RENDER
+        value: "true"
