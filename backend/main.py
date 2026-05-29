@@ -4205,6 +4205,15 @@ def render_index_html(frontend_root: Path, products_path: Path | None = None) ->
     )
 
 
+def _get_telegram_bot(app: Flask):
+    """Бот из app.config или временный экземпляр по BOT_TOKEN (Render web без worker)."""
+    bot = app.config.get("TELEGRAM_BOT")
+    if bot is None and config.BOT_TOKEN:
+        bot = telebot.TeleBot(config.BOT_TOKEN)
+        print("Временный бот создан для отправки сообщения", file=sys.stderr)
+    return bot
+
+
 def create_app(
     frontend_root: Path,
     uploads_dir: Path,
@@ -4943,7 +4952,7 @@ def create_app(
                 {"success": False, "error": "Failed to assign courier"}
             ), 500
 
-        bot = app.config.get("TELEGRAM_BOT")
+        bot = _get_telegram_bot(app)
         if bot is not None:
             courier_name = courier.get("name") or "Курьер"
             courier_phone = courier.get("phone") or ""
@@ -5258,10 +5267,13 @@ def create_app(
         if not text:
             return jsonify({"success": False, "error": "Empty text"}), 400
 
-        bot = app.config.get("TELEGRAM_BOT")
+        bot = _get_telegram_bot(app)
         if bot is None:
             return jsonify(
-                {"success": False, "error": "Бот не инициализирован"}
+                {
+                    "success": False,
+                    "error": "Бот не инициализирован и BOT_TOKEN не задан",
+                }
             ), 503
 
         orders = load_all_orders()
@@ -5317,7 +5329,7 @@ def create_app(
                 {"ok": False, "error": "Не удалось обновить статус заказа"}
             ), 500
 
-        bot = app.config.get("TELEGRAM_BOT")
+        bot = _get_telegram_bot(app)
         items_blob = _read_order_items_blob(order_id)
         order_text = str(items_blob.get("order_text_snapshot") or "")
         try:
@@ -5564,7 +5576,7 @@ def create_app(
             )
 
         public_url = resolve_public_base_url()
-        bot = app.config.get("TELEGRAM_BOT")
+        bot = _get_telegram_bot(app)
         try:
             _order, maps_url, _coords_saved = courier_go_start_delivery(
                 oid,
@@ -5660,7 +5672,7 @@ def create_app(
 
         try:
             if courier_uid is not None and is_courier_user(courier_uid):
-                bot = app.config.get("TELEGRAM_BOT")
+                bot = _get_telegram_bot(app)
 
                 lat_raw = data.get("lat") if data.get("lat") is not None else data.get("courier_lat")
                 lon_raw = data.get("lon") if data.get("lon") is not None else data.get("courier_lon")
@@ -5853,7 +5865,7 @@ def create_app(
             return jsonify({"success": False, "error": str(exc)}), 400
 
         final_total = float(result["new_total_price"])
-        bot = app.config.get("TELEGRAM_BOT")
+        bot = _get_telegram_bot(app)
         if bot is not None and admin_normalized:
             try:
                 admin_id = int(str(admin_normalized).strip())
@@ -5917,7 +5929,7 @@ def create_app(
         if not cancel_order_in_db(receipt_id, status="cancelled"):
             return jsonify({"status": "error", "message": "Чек не найден"}), 404
 
-        bot = app.config.get("TELEGRAM_BOT")
+        bot = _get_telegram_bot(app)
         if bot is not None:
             try:
                 order = get_order_from_db(receipt_id)
@@ -5971,7 +5983,7 @@ def create_app(
         if not cancel_order_in_db(oid, status="cancelled"):
             return jsonify({"success": False, "error": "Order not found"}), 404
 
-        bot = app.config.get("TELEGRAM_BOT")
+        bot = _get_telegram_bot(app)
         try:
             delete_courier_pool_telegram_messages(bot, oid)
         except Exception as purge_err:
@@ -6034,10 +6046,20 @@ def create_app(
     @limiter.limit("5 per minute")
     def submit_order():
         try:
+            # Пытаемся получить бота из конфига
             bot = app.config.get("TELEGRAM_BOT")
-            if bot is None:
+
+            # Если бота нет, создаем временного для отправки уведомлений
+            if bot is None and config.BOT_TOKEN:
+                import telebot
+                bot = telebot.TeleBot(config.BOT_TOKEN)
+                print("📱 Временный бот создан для отправки уведомления о заказе")
+            elif bot is None:
                 return jsonify(
-                    {"success": False, "error": "Бот не инициализирован"}
+                    {
+                        "success": False,
+                        "error": "Бот не инициализирован и BOT_TOKEN не задан",
+                    }
                 ), 503
 
             ADMIN_ID = app.config.get("ADMIN_ID", admin_normalized)
