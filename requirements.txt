@@ -10,4 +10,3 @@ requests>=2.31,<3
 Pillow>=10,<12
 cloudinary>=1.36,<2
 gunicorn>=21.0,<22
-"cloudinary>=1.36.0" 
